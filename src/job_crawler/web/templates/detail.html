@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }} - {{ job.company }}{% endblock %}
+{% block main %}
+<p style="margin-bottom:16px;"><a href="/">← 목록으로</a></p>
+
+<div class="card">
+  <div class="detail-header">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+      <span class="badge site-{{ job.site }}">{{ job.site }}</span>
+      {% set pos = extract_position(job.title) %}
+      {% if pos %}<span class="badge pos">{{ pos }}</span>{% endif %}
+    </div>
+    <h1>{{ job.title }}</h1>
+    <div class="detail-meta">
+      <span class="chip" style="font-weight:600; color:var(--fg);">🏢 {{ job.company }}</span>
+      <span class="chip">📍 {{ job.location or '지역 미표기' }}</span>
+      <span class="chip">💼 {{ job.experience or '경력 미표기' }}</span>
+      {% if job.employment_type %}<span class="chip">{{ job.employment_type }}</span>{% endif %}
+      {% if job.salary %}<span class="chip ok">💰 {{ job.salary }}</span>{% endif %}
+      {% if job.first_seen_at %}<span class="chip">🗓 {{ job.first_seen_at.strftime('%Y-%m-%d') }}</span>{% endif %}
+      {% if job.deadline_at %}<span class="chip warn">⏰ ~{{ job.deadline_at.strftime('%m-%d') }}</span>{% endif %}
+      <a href="{{ job.url }}" target="_blank" rel="noopener" class="btn ghost sm">원문 열기 ↗</a>
+    </div>
+  </div>
+
+  {% if job.tech_stack %}
+  <div class="tags" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">
+    {% for t in job.tech_stack %}<span class="chip tech">{{ t }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% set s = job.score %}
+  {% if s and s.status == 'done' and s.match_rate is not none %}
+    {% set r = s.match_rate or 0 %}
+    <div class="score-ring {% if r >= 75 %}high{% elif r >= 50 %}mid{% else %}low{% endif %}">
+      <div class="num">{{ r }}<span class="pct">%</span></div>
+      <div class="info">
+        <div class="verdict-text">{{ s.verdict or '평가 완료' }}</div>
+        <div class="muted" style="font-size:12px;">예상 합격률 (이력서 기반 · Gemini)</div>
+        <div class="score-bar"><span class="fill" style="width: {{ r }}%;"></span></div>
+      </div>
+      <button class="btn ghost sm"
+              hx-post="/jobs/{{ job.id }}/rescore"
+              hx-target="#score-{{ job.id }}"
+              hx-swap="outerHTML"
+              hx-on::after-request="if(event.detail.successful) location.reload()"
+              hx-confirm="Gemini를 한 번 더 호출해서 덮어씁니다. 진행할까요?">재평가</button>
+      <span id="score-{{ job.id }}" hidden></span>
+    </div>
+  {% else %}
+    <div style="display:flex; align-items:center; gap:10px; padding:14px; background:var(--surface2); border:1px solid var(--border); border-radius:12px;">
+      <span class="muted">아직 평가되지 않았습니다.</span>
+      {% include '_score.html' %}
+    </div>
+  {% endif %}
+</div>
+
+{% if job.score and job.score.status == 'done' %}
+<div class="card">
+  <h3><span class="ic"></span>평가 근거</h3>
+  <div class="analysis-grid">
+    {% if job.score.strengths %}
+    <div class="analysis-section">
+      <div class="analysis-title ok">강점</div>
+      <ul>{% for s in job.score.strengths %}<li>{{ s }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    {% if job.score.gaps %}
+    <div class="analysis-section">
+      <div class="analysis-title warn">부족한 점</div>
+      <ul>{% for s in job.score.gaps %}<li>{{ s }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    {% if job.score.red_flags %}
+    <div class="analysis-section">
+      <div class="analysis-title bad">결격 요소</div>
+      <ul>{% for s in job.score.red_flags %}<li>{{ s }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </div>
+  {% if job.score.action_tip %}
+    <div class="action-tip">{{ job.score.action_tip }}</div>
+  {% endif %}
+  <div class="analysis-meta" style="margin-top:12px;">
+    model={{ job.score.model }} · tokens {{ job.score.tokens_in }}/{{ job.score.tokens_out }} ·
+    {{ job.score.scored_at.strftime('%Y-%m-%d %H:%M') if job.score.scored_at else '' }}
+  </div>
+</div>
+{% elif job.score and job.score.status == 'failed' %}
+<div class="card">
+  <span class="chip bad">평가 실패</span>
+  <pre style="margin-top:8px; color:var(--fg2); font-size:12px;">{{ job.score.error }}</pre>
+</div>
+{% endif %}
+
+<div class="detail-body">
+  <h3 style="margin:0 0 14px; font-size:15px; display:flex; align-items:center; gap:8px;"><span style="width:3px; height:14px; background:var(--accent); border-radius:2px; display:inline-block;"></span>공고 본문</h3>
+  <div class="body-content">{{ job.body_text | fmt_body }}</div>
+</div>
+{% endblock %}

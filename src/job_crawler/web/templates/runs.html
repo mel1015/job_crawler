@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}크롤링 이력{% endblock %}
+{% block main %}
+
+<div class="page-title"><span class="icon"></span><h2>크롤링 이력</h2></div>
+
+<div class="card crawl-panel">
+  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+    <h3 style="margin:0;"><span class="ic"></span>수동 크롤링 실행</h3>
+    {% if running %}
+      <span class="chip warn">진행 중 · {{ running|map(attribute='site')|join(', ') }}</span>
+    {% endif %}
+  </div>
+  <p class="muted" style="font-size:12px; margin:6px 0 12px;">
+    기존에 수집된 공고는 <code style="background:var(--surface2); padding:1px 6px; border-radius:4px;">(site, external_id)</code>로 식별되어
+    <strong style="color:var(--fg2);">자동으로 중복 제거</strong>됩니다. 신규 공고만 새로 저장되며, 기존 공고는 <code style="background:var(--surface2); padding:1px 6px; border-radius:4px;">last_seen_at</code>만 갱신됩니다.
+  </p>
+  <form hx-post="/crawl" hx-target="#crawl-status" hx-swap="innerHTML"
+        hx-disabled-elt="find button" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <div class="field">
+      <span class="ic">🏢</span>
+      <select name="site">
+        <option value="">전체 사이트</option>
+        {% for s in active_sites %}
+          <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <span class="ic">#</span>
+      <input type="number" name="limit" value="20" min="1" max="100" style="width:80px;">
+      <span class="muted" style="font-size:12px; padding-right:8px;">사이트당</span>
+    </div>
+    <button class="btn" type="submit">
+      <span class="btn-label">지금 크롤링</span>
+      <span class="spinner" style="margin-left:6px;"></span>
+    </button>
+    <span id="crawl-status" style="display:inline-flex; align-items:center; gap:6px;"
+          hx-get="/crawl/status" hx-trigger="load, every 3s" hx-swap="innerHTML"
+          hx-on::after-swap="(function(el){if(el.dataset.wasRunning==='1'&&!el.querySelector('.crawl-live')){window.location.reload();}el.dataset.wasRunning=el.querySelector('.crawl-live')?'1':'0';})(this)"></span>
+  </form>
+</div>
+
+<style>
+.crawl-panel .field { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; display: flex; align-items: center; gap: 6px; }
+.crawl-panel .field select, .crawl-panel .field input { background: transparent; color: var(--fg); border: 0; padding: 8px 4px; font-size: 13px; outline: none; }
+.crawl-panel .field select option { background: var(--surface); }
+.crawl-panel form button.htmx-request .spinner { display: inline-block; }
+</style>
+
+<div class="stats-grid">
+  <div class="stat-card accent">
+    <div class="label">총 실행 수</div>
+    <div class="value">{{ summary.total }}</div>
+    <div class="sub">최근 100회 기준</div>
+  </div>
+  <div class="stat-card ok">
+    <div class="label">성공률</div>
+    <div class="value">{{ summary.success_rate }}%</div>
+    <div class="sub">{{ summary.ok }}건 성공 · {{ summary.errors }}건 실패</div>
+  </div>
+  <div class="stat-card warn">
+    <div class="label">누적 수집</div>
+    <div class="value">{{ summary.total_fetched }}</div>
+    <div class="sub">신규 {{ summary.total_new }}건</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="label">사이트별</div>
+    <div class="value">{{ summary.by_site|length }}</div>
+    <div class="badge-list">
+      {% for site, st in summary.by_site %}
+        <span class="badge site-{{ site }}">{{ site }} {{ st.runs }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if summary.by_site %}
+<div class="card">
+  <h3><span class="ic"></span>사이트별 요약</h3>
+  <table class="runs-table" style="border:0; border-radius:0;">
+    <thead>
+      <tr><th>사이트</th><th>실행</th><th>성공률</th><th>수집</th><th>신규</th></tr>
+    </thead>
+    <tbody>
+      {% for site, st in summary.by_site %}
+      {% set rate = (st.ok * 100 // st.runs) if st.runs else 0 %}
+      <tr>
+        <td><span class="badge site-{{ site }}">{{ site }}</span></td>
+        <td class="num">{{ st.runs }}</td>
+        <td class="num">
+          <span class="bar-track"><span class="fill {% if rate >= 90 %}ok{% elif rate >= 60 %}warn{% else %}bad{% endif %}" style="width: {{ rate }}%;"></span></span>
+          {{ rate }}%
+        </td>
+        <td class="num">{{ st.fetched }}</td>
+        <td class="num n-new">+{{ st.new_jobs }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card" style="padding:0; overflow:hidden;">
+  <h3 style="padding:18px 20px 12px; margin:0;"><span class="ic"></span>상세 이력</h3>
+  <table class="runs-table" style="border:0; border-radius:0; border-top:1px solid var(--border);">
+    <thead>
+      <tr>
+        <th>시작</th>
+        <th>사이트</th>
+        <th>소요</th>
+        <th>수집</th>
+        <th>신규</th>
+        <th>상태</th>
+        <th>에러</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      {% set dur = ((r.finished_at - r.started_at).total_seconds() | int) if r.finished_at else None %}
+      <tr>
+        <td class="muted num">{{ r.started_at.strftime('%m-%d %H:%M') }}</td>
+        <td><span class="badge site-{{ r.site }}">{{ r.site }}</span></td>
+        <td class="muted num">{% if dur is not none %}{{ dur }}초{% else %}-{% endif %}</td>
+        <td class="num">{{ r.fetched }}</td>
+        <td class="num n-new">{% if r.new_jobs %}+{{ r.new_jobs }}{% else %}0{% endif %}</td>
+        <td>
+          {% if r.status == 'ok' %}<span class="chip ok">ok</span>
+          {% elif r.status == 'error' %}<span class="chip bad">error</span>
+          {% else %}<span class="chip warn">{{ r.status }}</span>{% endif %}
+        </td>
+        <td class="muted num">{{ r.errors | length if r.errors else 0 }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted" style="text-align:center; padding:40px;">이력이 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

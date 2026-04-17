@@ -1,0 +1,37 @@
+{% set s = job.score %}
+<span id="score-{{ job.id }}">
+{% if not s or (s.status == 'scoring' and not s.match_rate) %}
+  {% if s and s.status == 'scoring' %}
+    <span class="muted" style="font-size:13px;">평가 중…</span>
+  {% else %}
+    <button class="btn ghost sm score-btn"
+            hx-post="/jobs/{{ job.id }}/score"
+            hx-target="#score-{{ job.id }}"
+            hx-swap="outerHTML"
+            hx-disabled-elt="this"
+            hx-indicator="#score-{{ job.id }} .spinner">
+      <span class="btn-label">평가</span>
+      <span class="spinner" aria-hidden="true"></span>
+    </button>
+  {% endif %}
+{% elif s.status == 'failed' %}
+  <span class="chip bad" title="{{ s.error or '' }}">실패</span>
+  <button class="btn ghost sm score-btn"
+          hx-post="/jobs/{{ job.id }}/score"
+          hx-target="#score-{{ job.id }}"
+          hx-swap="outerHTML"
+          hx-disabled-elt="this"
+          hx-indicator="#score-{{ job.id }} .spinner">
+    <span class="btn-label">재시도</span>
+    <span class="spinner" aria-hidden="true"></span>
+  </button>
+{% else %}
+  {% set r = s.match_rate or 0 %}
+  <span class="score-pill {% if r >= 75 %}high{% elif r >= 50 %}mid{% else %}low{% endif %}"
+        onclick="toggleAnalysis({{ job.id }})"
+        title="클릭하여 분석 보기">
+    {{ r }}%
+    <span class="verdict">{{ s.verdict or '' }}</span>
+  </span>
+{% endif %}
+</span>

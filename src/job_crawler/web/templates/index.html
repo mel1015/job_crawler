@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}공고 목록 - Job Crawler{% endblock %}
+{% block main %}
+
+<div class="page-title"><span class="icon"></span><h2>공고 대시보드</h2></div>
+
+<div class="stats-grid">
+  <div class="stat-card accent">
+    <div class="label">전체 공고</div>
+    <div class="value">{{ stats.total }}</div>
+    <div class="sub">누적 수집</div>
+  </div>
+  <div class="stat-card ok">
+    <div class="label">평가 완료</div>
+    <div class="value">{{ stats.scored }}</div>
+    <div class="sub">
+      {% if stats.total %}{{ (stats.scored * 100 // stats.total) }}%{% else %}0%{% endif %}
+      · 고합격률 {{ stats.high }}건
+    </div>
+  </div>
+  <div class="stat-card warn">
+    <div class="label">최근 7일</div>
+    <div class="value">{{ stats.recent_week }}</div>
+    <div class="sub">오늘 {{ stats.recent_day }}건 신규</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="label">사이트별</div>
+    <div class="value">{{ stats.by_site|length }}</div>
+    <div class="badge-list">
+      {% for site, n in stats.by_site.items() %}
+        <span class="badge site-{{ site }}">{{ site }} {{ n }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<form id="filterForm" class="filter-bar" method="get" action="/">
+  <div class="field">
+    <span class="ic">🔍</span>
+    <input type="text" name="q" value="{{ filters.q }}" placeholder="제목 · 회사 · 본문 검색">
+  </div>
+  <div class="field">
+    <span class="ic">🏢</span>
+    <select name="site" onchange="this.form.submit()">
+      <option value="">전체 사이트</option>
+      {% for s in sites %}
+        <option value="{{ s }}" {% if filters.site == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <span class="ic">✨</span>
+    <select name="status" onchange="this.form.submit()">
+      <option value="">평가 상태</option>
+      <option value="scored" {% if filters.status == 'scored' %}selected{% endif %}>평가완료</option>
+      <option value="unscored" {% if filters.status == 'unscored' %}selected{% endif %}>미평가</option>
+    </select>
+  </div>
+  <div class="field">
+    <span class="ic">%</span>
+    <input type="number" name="min_rate" min="0" max="100" value="{{ filters.min_rate }}" placeholder="최소">
+  </div>
+  <div class="field">
+    <span class="ic">↕</span>
+    <select name="sort" onchange="this.form.submit()">
+      <option value="latest" {% if filters.sort == 'latest' %}selected{% endif %}>최신순</option>
+      <option value="rate" {% if filters.sort == 'rate' %}selected{% endif %}>합격률순</option>
+    </select>
+  </div>
+  <button class="btn sm" type="submit">적용</button>
+  <span class="count"><span class="n">{{ jobs|length }}</span> / {{ stats.total }}건</span>
+</form>
+
+{% set has_filter = filters.q or filters.site or filters.status or filters.min_rate %}
+{% if has_filter %}
+<div class="active-filters">
+  <span class="af-label">적용된 필터:</span>
+  {% if filters.q %}<span class="af-chip">검색: {{ filters.q }}</span>{% endif %}
+  {% if filters.site %}<span class="af-chip">{{ filters.site }}</span>{% endif %}
+  {% if filters.status %}<span class="af-chip">{{ '평가완료' if filters.status == 'scored' else '미평가' }}</span>{% endif %}
+  {% if filters.min_rate %}<span class="af-chip">합격률 ≥ {{ filters.min_rate }}%</span>{% endif %}
+  <a href="/" class="af-reset">전체 초기화</a>
+</div>
+{% endif %}
+
+<div class="job-list">
+{% for j in jobs %}
+  {% set pos = extract_position(j.title) %}
+  {% set is_new = j.first_seen_at and (now - j.first_seen_at).total_seconds() < 86400 %}
+  <div class="job-card"
+       onclick="if(!event.target.closest('button,a,.score-pill,.spinner,.expand-btn'))location.href='/jobs/{{ j.id }}'" style="cursor:pointer;">
+    <div class="top-row">
+      <div class="main-info">
+        <div class="title-line">
+          <span class="badge site-{{ j.site }}">{{ j.site }}</span>
+          {% if pos %}<span class="badge pos">{{ pos }}</span>{% endif %}
+          {% if is_new %}<span class="badge new-badge">NEW</span>{% endif %}
+          <a href="/jobs/{{ j.id }}">{{ j.title }}</a>
+        </div>
+        <div class="meta-line">
+          <strong>{{ j.company }}</strong>
+          <span class="sep">•</span>
+          <span>{{ j.location or '지역 미표기' }}</span>
+          <span class="sep">•</span>
+          <span>{{ j.experience or '경력 미표기' }}</span>
+          {% if j.employment_type %}
+            <span class="sep">•</span>
+            <span>{{ j.employment_type }}</span>
+          {% endif %}
+          <span class="sep">•</span>
+          <span class="date">{{ j.first_seen_at.strftime('%m/%d') if j.first_seen_at else '-' }}</span>
+        </div>
+        {% if j.tech_stack %}
+        <div class="tags">
+          {% for t in j.tech_stack[:8] %}<span class="chip tech">{{ t }}</span>{% endfor %}
+          {% if j.tech_stack|length > 8 %}
+            {% for t in j.tech_stack[8:] %}<span class="chip tech tech-rest" hidden>{{ t }}</span>{% endfor %}
+            <button type="button" class="expand-btn" data-rest="{{ j.tech_stack|length - 8 }}"
+                    onclick="event.stopPropagation(); toggleStackExpand(this);">+{{ j.tech_stack|length - 8 }} 더보기</button>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="score-area">
+        {% with job=j %}{% include '_score.html' %}{% endwith %}
+      </div>
+    </div>
+    <div class="analysis-wrap" id="analysis-wrap-{{ j.id }}">
+      <div id="analysis-{{ j.id }}" data-open="0"></div>
+    </div>
+  </div>
+{% else %}
+  <div class="empty-state">
+    <div class="ic">📭</div>
+    {% if has_filter %}
+      <h3>조건에 맞는 공고가 없습니다</h3>
+      <p>필터를 조정하거나 <a href="/">전체 공고 보기</a></p>
+    {% else %}
+      <h3>아직 수집된 공고가 없습니다</h3>
+      <p>터미널에서 <code>jc-crawl --limit 20</code>을 먼저 실행해주세요.</p>
+    {% endif %}
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

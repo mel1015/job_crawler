@@ -1,0 +1,26 @@
+{% if running %}
+  <span class="crawl-live">
+    <span class="crawl-dot"></span>
+    <span class="crawl-text">
+      <strong>크롤링 중</strong>
+      · {{ running|map(attribute='site')|join(', ') }}
+      {% set first = running[0] %}
+      {% set elapsed = (now - first.started_at).total_seconds() | int %}
+      · {% if elapsed < 60 %}{{ elapsed }}초{% else %}{{ elapsed // 60 }}분 {{ elapsed % 60 }}초{% endif %} 경과
+    </span>
+  </span>
+{% elif recent_fresh and recent %}
+  {% set ago = (now - recent.finished_at).total_seconds() | int %}
+  {% if recent.status == 'ok' %}
+    <span class="chip ok">완료 · {{ recent.site }}</span>
+    <span class="muted" style="font-size:12px;">
+      수집 {{ recent.fetched }} · 신규 <strong style="color:var(--ok);">+{{ recent.new_jobs }}</strong> ·
+      {% if ago < 60 %}{{ ago }}초 전{% else %}{{ ago // 60 }}분 전{% endif %}
+    </span>
+  {% else %}
+    <span class="chip bad">실패 · {{ recent.site }}</span>
+    <span class="muted" style="font-size:12px;">
+      {% if ago < 60 %}{{ ago }}초 전{% else %}{{ ago // 60 }}분 전{% endif %}
+    </span>
+  {% endif %}
+{% endif %}
