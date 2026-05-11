@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select, update
 
 from .config import get_settings
 from .crawlers.base import BaseCrawler, JobDetail, JobSummary, SearchCriteria
@@ -65,7 +65,39 @@ async def crawl_site(site: str, limit: int) -> tuple[int, int, list[str]]:
     finally:
         await crawler.aclose()
 
+    _mark_closed_jobs(site)
     return fetched, new_count, errors
+
+
+def _mark_closed_jobs(site: str) -> int:
+    """마감 조건을 만족하는 공고를 is_closed=True로 마킹한다.
+
+    두 조건 중 하나를 충족하면 마감 처리:
+    - deadline_at이 설정됐고 now를 지난 경우 (마감일 경과)
+    - deadline_at이 없고 last_seen_at이 14일 이상 갱신되지 않은 경우
+      (마감일 정보가 없는 사이트에서 limit 제한 등으로 누락 시 false positive 방지)
+
+    deadline_at이 미래로 설정된 공고는 last_seen_at 조건으로는 닫지 않는다.
+    """
+    now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+    threshold = now - timedelta(days=14)
+    with session_scope() as session:
+        result = session.execute(
+            update(Job)
+            .where(
+                Job.site == site,
+                Job.is_closed == False,  # noqa: E712
+                or_(
+                    and_(Job.deadline_at.isnot(None), Job.deadline_at < now),
+                    and_(Job.deadline_at.is_(None), Job.last_seen_at < threshold),
+                ),
+            )
+            .values(is_closed=True)
+        )
+        count = result.rowcount
+    if count:
+        logger.info(f"[{site}] marked {count} job(s) as closed")
+    return count
 
 
 def _upsert_job(detail: JobDetail) -> bool:
