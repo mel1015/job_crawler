@@ -35,7 +35,9 @@ def index(
         min_rate_val = None
     with session_scope() as session:
         all_jobs = list(
-            session.execute(select(Job).options(joinedload(Job.score))).unique().scalars()
+            session.execute(
+                select(Job).options(joinedload(Job.score)).where(Job.is_closed == False)  # noqa: E712
+            ).unique().scalars()
         )
         now = datetime.now()
         week_ago = now - timedelta(days=7)
