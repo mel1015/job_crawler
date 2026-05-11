@@ -14,7 +14,7 @@ class SearchCriteria:
     regions: list[str] = field(default_factory=list)
     years_min: int | None = None
     years_max: int | None = None
-    limit: int = 20
+    max_results: int = 300
 
 
 @dataclass
