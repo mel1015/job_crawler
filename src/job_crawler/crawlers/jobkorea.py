@@ -59,7 +59,7 @@ class JobkoreaCrawler(BaseCrawler):
         return r.text
 
     async def search(self, criteria: SearchCriteria) -> list[JobSummary]:
-        params = {
+        base_params: dict[str, str] = {
             "stext": " ".join(criteria.keywords) if criteria.keywords else "백엔드",
             "tabType": "recruit",
         }
@@ -67,20 +67,29 @@ class JobkoreaCrawler(BaseCrawler):
             {REGION_CODES[r] for r in criteria.regions if r in REGION_CODES}
         )
         if local:
-            params["local"] = local
+            base_params["local"] = local
         if criteria.years_min is not None and criteria.years_max is not None:
-            params["careerMin"] = str(criteria.years_min)
-            params["careerMax"] = str(criteria.years_max)
-            params["careerType"] = "1"
-        url = f"{SEARCH_BASE}?{urlencode(params)}"
+            base_params["careerMin"] = str(criteria.years_min)
+            base_params["careerMax"] = str(criteria.years_max)
+            base_params["careerType"] = "1"
 
-        try:
-            html = await self._get_html(url)
-        except httpx.HTTPError as e:
-            logger.error(f"jobkorea search failed: {e}")
-            return []
+        summaries: list[JobSummary] = []
+        page = 1
+        while len(summaries) < criteria.max_results:
+            params = {**base_params, "Page": str(page)}
+            url = f"{SEARCH_BASE}?{urlencode(params)}"
+            try:
+                html = await self._get_html(url)
+            except httpx.HTTPError as e:
+                logger.error(f"jobkorea search failed at page={page}: {e}")
+                break
+            items = self._parse_list(html)
+            if not items:
+                break
+            summaries.extend(items)
+            page += 1
 
-        return self._parse_list(html)[: criteria.limit]
+        return summaries[: criteria.max_results]
 
     def _parse_list(self, html: str) -> list[JobSummary]:
         soup = BeautifulSoup(html, "html.parser")

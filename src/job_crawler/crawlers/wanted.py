@@ -58,39 +58,51 @@ class WantedCrawler(BaseCrawler):
                 codes.append(code)
         return codes or ["all"]
 
+    PAGE_SIZE = 100
+
     async def search(self, criteria: SearchCriteria) -> list[JobSummary]:
-        params: list[tuple[str, Any]] = [
+        base_params: list[tuple[str, Any]] = [
             ("country", "kr"),
             ("job_sort", "job.latest_order"),
-            ("limit", min(criteria.limit, 100)),
-            ("offset", 0),
         ]
         for loc in self._locations_param(criteria.regions):
-            params.append(("locations", loc))
+            base_params.append(("locations", loc))
         if criteria.years_min is not None:
-            params.append(("years", criteria.years_min))
+            base_params.append(("years", criteria.years_min))
         if criteria.years_max is not None:
-            params.append(("years", criteria.years_max))
+            base_params.append(("years", criteria.years_max))
         if criteria.keywords:
-            params.append(("query", " ".join(criteria.keywords)))
+            base_params.append(("query", " ".join(criteria.keywords)))
 
-        try:
-            data = await self._get_json(SEARCH_URL, params=params)
-        except httpx.HTTPError as e:
-            logger.error(f"wanted search failed: {e}")
-            return []
-
-        items = data.get("data") or data.get("jobs") or []
         summaries: list[JobSummary] = []
-        for it in items:
+        offset = 0
+        while len(summaries) < criteria.max_results:
+            params = base_params + [
+                ("limit", self.PAGE_SIZE),
+                ("offset", offset),
+            ]
             try:
-                summary = self._parse_summary(it)
-                if not self._match_experience(it, criteria):
-                    continue
-                summaries.append(summary)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"wanted summary parse skipped: {e}")
-        return summaries
+                data = await self._get_json(SEARCH_URL, params=params)
+            except httpx.HTTPError as e:
+                logger.error(f"wanted search failed at offset={offset}: {e}")
+                break
+
+            items = data.get("data") or data.get("jobs") or []
+            if not items:
+                break
+            for it in items:
+                try:
+                    summary = self._parse_summary(it)
+                    if not self._match_experience(it, criteria):
+                        continue
+                    summaries.append(summary)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"wanted summary parse skipped: {e}")
+            if len(items) < self.PAGE_SIZE:
+                break
+            offset += self.PAGE_SIZE
+
+        return summaries[: criteria.max_results]
 
     def _match_experience(self, item: dict[str, Any], criteria: SearchCriteria) -> bool:
         """공고의 연차 범위가 희망 범위와 겹치면 True. 미표기는 통과."""

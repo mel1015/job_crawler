@@ -49,7 +49,7 @@ class GreetingCrawler(BaseCrawler):
 
         items = data.get("data") or data.get("jobs") or []
         summaries: list[JobSummary] = []
-        for it in items[: criteria.limit]:
+        for it in items[: criteria.max_results]:
             job_id = str(it.get("id") or it.get("jobId"))
             title = it.get("name") or it.get("title") or "제목없음"
             location = (it.get("workplace") or {}).get("name") if isinstance(

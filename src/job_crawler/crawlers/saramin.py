@@ -58,32 +58,44 @@ class SaraminCrawler(BaseCrawler):
         r.raise_for_status()
         return r.text
 
+    PAGE_SIZE = 50
+
     async def search(self, criteria: SearchCriteria) -> list[JobSummary]:
         loc_mcd = ",".join(
             {REGION_CODES[r] for r in criteria.regions if r in REGION_CODES}
         )
-        params = {
+        base_params: dict[str, str] = {
             "searchType": "search",
             "searchword": " ".join(criteria.keywords) if criteria.keywords else "백엔드",
-            "recruitPage": "1",
             "recruitSort": "reg_dt",
-            "recruitPageCount": str(min(criteria.limit, 50)),
+            "recruitPageCount": str(self.PAGE_SIZE),
         }
         if loc_mcd:
-            params["loc_mcd"] = loc_mcd
+            base_params["loc_mcd"] = loc_mcd
         if criteria.years_min is not None and criteria.years_max is not None:
-            params["exp_cd"] = "2"
-            params["exp_min"] = str(criteria.years_min)
-            params["exp_max"] = str(criteria.years_max)
-        url = f"{SEARCH_BASE}?{urlencode(params)}"
+            base_params["exp_cd"] = "2"
+            base_params["exp_min"] = str(criteria.years_min)
+            base_params["exp_max"] = str(criteria.years_max)
 
-        try:
-            html = await self._get_html(url)
-        except httpx.HTTPError as e:
-            logger.error(f"saramin search failed: {e}")
-            return []
+        summaries: list[JobSummary] = []
+        page = 1
+        while len(summaries) < criteria.max_results:
+            params = {**base_params, "recruitPage": str(page)}
+            url = f"{SEARCH_BASE}?{urlencode(params)}"
+            try:
+                html = await self._get_html(url)
+            except httpx.HTTPError as e:
+                logger.error(f"saramin search failed at page={page}: {e}")
+                break
+            items = self._parse_list(html)
+            if not items:
+                break
+            summaries.extend(items)
+            if len(items) < self.PAGE_SIZE:
+                break
+            page += 1
 
-        return self._parse_list(html)[: criteria.limit]
+        return summaries[: criteria.max_results]
 
     def _parse_list(self, html: str) -> list[JobSummary]:
         soup = BeautifulSoup(html, "html.parser")
