@@ -42,9 +42,7 @@ class Job(Base):
     body_raw: Mapped[str | None] = mapped_column(Text)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     score: Mapped["ScoreResult | None"] = relationship(
         back_populates="job", uselist=False, cascade="all, delete-orphan"
