@@ -21,7 +21,7 @@ JOB_URL = "https://career.rememberapp.co.kr/job/postings/{job_id}"
 
 class RememberCrawler(BaseCrawler):
     site_name = "remember"
-    PAGE_SIZE = 100
+    PAGE_SIZE = 50
 
     def __init__(self, user_agent: str, request_delay_sec: float = 1.5):
         super().__init__(request_delay_sec=request_delay_sec)
@@ -148,9 +148,9 @@ def _parse_dt(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value
     s = str(value)
-    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
         try:
-            dt = datetime.strptime(s[:26], fmt)
+            dt = datetime.strptime(s, fmt)
             return dt.replace(tzinfo=None) if dt.tzinfo else dt
         except ValueError:
             continue

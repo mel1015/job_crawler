@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -108,7 +109,7 @@ class JumpitCrawler(BaseCrawler):
             site=self.site_name,
             external_id=job_id,
             url=JOB_URL.format(job_id=job_id),
-            title=pos.get("title") or "제목없음",
+            title=re.sub(r"<[^>]+>", "", pos.get("title") or "제목없음"),
             company=pos.get("companyName") or "알수없음",
             location=location,
             posted_at=posted_at,
@@ -129,7 +130,11 @@ class JumpitCrawler(BaseCrawler):
             "\n[복리후생]\n" + (result.get("welfares") or "") if result.get("welfares") else None,
         ]
         body_text = "\n".join(p for p in parts if p)
-        tech_stack = result.get("techStacks") or []
+        raw_stacks = result.get("techStacks") or []
+        tech_stack = [
+            t["stack"] if isinstance(t, dict) else str(t)
+            for t in raw_stacks if t
+        ]
         career_lo = result.get("minCareer")
         career_hi = result.get("maxCareer")
         closed_raw = result.get("closedAt")
@@ -140,7 +145,7 @@ class JumpitCrawler(BaseCrawler):
             body_text=body_text[:20000],
             body_raw=str(data)[:50000],
             experience=_fmt_years(career_lo, career_hi),
-            tech_stack=[str(t) for t in tech_stack if t],
+            tech_stack=[t for t in tech_stack if t],
             deadline_at=deadline_at,
         )
 
