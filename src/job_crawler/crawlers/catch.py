@@ -128,9 +128,11 @@ def _extract_body(html: str) -> str:
         for tag in soup.select(sel):
             tag.decompose()
     main = soup.select_one(".recruit_detail") or soup.select_one(".wrap_recruit_cont") or soup.body
-    if main:
-        return main.get_text("\n", strip=True)
-    return soup.get_text("\n", strip=True)
+    text = main.get_text("\n", strip=True) if main else soup.get_text("\n", strip=True)
+    if not text:
+        # 이미지로만 JD를 올린 공고 — 텍스트 추출 불가
+        return "(이미지 공고 — 원문 링크에서 확인)"
+    return text
 
 
 def _parse_dt(value: Any) -> datetime | None:
