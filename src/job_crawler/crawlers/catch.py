@@ -1,104 +1,123 @@
 """캐치(catch.co.kr) 크롤러. 대기업/공기업 채용 특화 플랫폼.
 
-Nuxt.js SPA라 httpx 직접 파싱 불가. Playwright로 렌더링 후 추출.
-키워드 필터링이 완벽하지 않으므로 pass_filters에서 2차 필터링.
+공개 JSON API 사용. Playwright 불필요.
+Depth/AssignedTaskNameListString 필드로 IT 직군 1차 필터링.
 """
 from __future__ import annotations
 
-import re
-from urllib.parse import parse_qs, urlparse
+from datetime import datetime
+from typing import Any
 
+import httpx
 from loguru import logger
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-from .base import JobDetail, JobSummary, SearchCriteria
-from .playwright_base import PlaywrightCrawler
+from .base import BaseCrawler, JobDetail, JobSummary, SearchCriteria
 
-SEARCH_URL = "https://www.catch.co.kr/NCS/RecruitSearch"
+SEARCH_URL = "https://www.catch.co.kr/api/v1.0/recruit/information/getRecruitList"
 DETAIL_BASE = "https://www.catch.co.kr/NCS/RecruitInfoDetails"
 
+_IT_KEYWORDS = (
+    "웹개발", "소프트웨어", "네트워크/서버", "데이터분석", "IT기획", "모바일앱",
+    "개발", "developer", "engineer", "backend", "frontend", "서버", "데이터",
+    "devops", "sre", "클라우드", "cloud", "dba", "qa", "보안", "security",
+)
 
-class CatchCrawler(PlaywrightCrawler):
+
+class CatchCrawler(BaseCrawler):
     site_name = "catch"
+
+    def __init__(self, user_agent: str, request_delay_sec: float = 1.0):
+        super().__init__(request_delay_sec=request_delay_sec)
+        self._client = httpx.AsyncClient(
+            headers={
+                "User-Agent": user_agent,
+                "Accept": "application/json",
+                "Referer": "https://www.catch.co.kr/",
+            },
+            timeout=15.0,
+            follow_redirects=True,
+        )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    PAGE_SIZE = 30
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
+    async def _get_json(self, params: dict[str, Any]) -> dict[str, Any]:
+        await self._throttle()
+        r = await self._client.get(SEARCH_URL, params=params)
+        r.raise_for_status()
+        return r.json()
 
     async def search(self, criteria: SearchCriteria) -> list[JobSummary]:
         keyword = " ".join(criteria.keywords) if criteria.keywords else "개발자"
         summaries: list[JobSummary] = []
         seen: set[str] = set()
-
-        # 단일 페이지 렌더링 (키워드 필터 불완전하여 페이지네이션 실익 낮음)
-        url = f"{SEARCH_URL}?keyword={keyword}"
-        try:
-            page = await self._new_page()
-            await page.goto(url, wait_until="networkidle", timeout=40000)
-            links = await page.query_selector_all("a[href*='RecruitInfoDetails']")
-
-            for lnk in links:
-                try:
-                    href = await lnk.get_attribute("href") or ""
-                    job_id = self._extract_id(href)
-                    if not job_id or job_id in seen:
-                        continue
-                    seen.add(job_id)
-
-                    name_el = await lnk.query_selector("p.name")
-                    subj_el = await lnk.query_selector("p.subj")
-                    company = (await name_el.inner_text()).strip() if name_el else "알수없음"
-                    title = (await subj_el.inner_text()).strip() if subj_el else "제목없음"
-                    if not title or not company:
-                        continue
-
-                    summaries.append(
-                        JobSummary(
-                            site=self.site_name,
-                            external_id=job_id,
-                            url=f"{DETAIL_BASE}/{job_id}",
-                            title=title,
-                            company=company,
-                        )
-                    )
-                except Exception as e:  # noqa: BLE001
-                    logger.debug(f"catch card parse skipped: {e}")
-
-            await page.close()
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"catch search failed: {e}")
-
-        logger.info(f"[catch] keyword='{keyword}' collected {len(summaries)} summaries")
+        page = 1
+        while len(summaries) < criteria.max_results:
+            try:
+                data = await self._get_json({
+                    "Keyword": keyword,
+                    "Sort": "0",
+                    "curpage": str(page),
+                    "pageSize": str(self.PAGE_SIZE),
+                    "onRecruitYN": "Y",
+                })
+            except httpx.HTTPError as e:
+                logger.error(f"catch search failed at page={page}: {e}")
+                break
+            items = data.get("recruitData") or []
+            if not items:
+                break
+            for it in items:
+                rid = str(it.get("RecruitID") or "")
+                if not rid or rid in seen:
+                    continue
+                if not self._is_it_job(it):
+                    continue
+                seen.add(rid)
+                summaries.append(self._parse_summary(it))
+            if len(items) < self.PAGE_SIZE:
+                break
+            page += 1
         return summaries[: criteria.max_results]
 
-    def _extract_id(self, href: str) -> str | None:
-        # returnUrl=/NCS/RecruitInfoDetails/{id} 패턴
-        m = re.search(r"RecruitInfoDetails/(\d+)", href)
-        if m:
-            return m.group(1)
-        # 직접 /NCS/RecruitInfoDetails/{id} 패턴
-        parsed = urlparse(href)
-        qs = parse_qs(parsed.query)
-        return_url = qs.get("returnUrl", [""])[0]
-        m2 = re.search(r"RecruitInfoDetails/(\d+)", return_url)
-        return m2.group(1) if m2 else None
+    def _is_it_job(self, it: dict[str, Any]) -> bool:
+        depth = it.get("Depth") or ""
+        task = it.get("AssignedTaskNameListString") or ""
+        title = it.get("RecruitTitle") or ""
+        combined = f"{depth} {task} {title}".lower()
+        return any(kw.lower() in combined for kw in _IT_KEYWORDS)
 
-    async def fetch_detail(self, summary: JobSummary) -> JobDetail:
-        try:
-            page = await self._new_page()
-            await page.goto(summary.url, wait_until="networkidle", timeout=40000)
-            body_text = await self._extract_body(page)
-            await page.close()
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"catch detail failed {summary.external_id}: {e}")
-            return JobDetail(summary=summary, body_text="")
-
-        return JobDetail(
-            summary=summary,
-            body_text=body_text[:20000],
+    def _parse_summary(self, it: dict[str, Any]) -> JobSummary:
+        rid = str(it.get("RecruitID"))
+        experience_parts = [it.get("ExperienceText"), it.get("ExperienceRange")]
+        experience = " ".join(p for p in experience_parts if p) or None
+        return JobSummary(
+            site=self.site_name,
+            external_id=rid,
+            url=f"{DETAIL_BASE}/{rid}",
+            title=it.get("RecruitTitle") or "제목없음",
+            company=it.get("CompName") or "알수없음",
+            location=it.get("WorkArea"),
+            posted_at=_parse_dt(it.get("ApplyStartDatetime")),
         )
 
-    async def _extract_body(self, page) -> str:
-        # 공고 상세 내용 영역
-        for sel in [".wrap_jv_cont", ".jv_cont", ".info_tab_area", ".recruit_info"]:
-            el = await page.query_selector(sel)
-            if el:
-                return (await el.inner_text()).strip()
-        # fallback: 전체 텍스트에서 불필요한 nav/header 제외
-        text = await page.inner_text("body")
-        return text[:5000]
+    async def fetch_detail(self, summary: JobSummary) -> JobDetail:
+        # 검색 API에서 이미 메타데이터 확보. 상세 본문 API 미제공.
+        return JobDetail(summary=summary, body_text="")
+
+
+def _parse_dt(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(str(value), fmt)
+        except ValueError:
+            continue
+    return None
