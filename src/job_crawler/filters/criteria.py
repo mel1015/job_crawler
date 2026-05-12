@@ -60,6 +60,9 @@ def pass_filters(summary: JobSummary) -> bool:
     for bad in BLACKLIST_KEYWORDS:
         if bad.lower() in title:
             return False
+    # catch는 크롤러 내부(_is_it_job)에서 IT 직군 필터링 완료
+    if summary.site == "catch":
+        return True
     for dev in DEV_KEYWORDS:
         if dev.lower() in title:
             return True
