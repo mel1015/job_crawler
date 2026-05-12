@@ -85,4 +85,5 @@ def _check_position(title: str, settings) -> bool:
     # 분류 불가("") 또는 generic("개발")은 통과 — 광범위 제목의 백엔드 공고 누락 방지
     if pos in {"", "개발"}:
         return True
-    return pos in settings.positions_list
+    allowed = {p.lower() for p in settings.positions_list}
+    return pos.lower() in allowed
