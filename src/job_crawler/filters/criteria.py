@@ -55,15 +55,35 @@ def extract_position(title: str) -> str:
 
 
 def pass_filters(summary: JobSummary) -> bool:
-    _ = get_settings()
+    settings = get_settings()
     title = (summary.title or "").lower()
+    company = (summary.company or "").lower()
+
     for bad in BLACKLIST_KEYWORDS:
         if bad.lower() in title:
             return False
-    # catch는 크롤러 내부(_is_it_job)에서 IT 직군 필터링 완료
+
+    for bad_co in settings.blacklist_companies_list:
+        if bad_co.lower() in company:
+            return False
+
+    # catch는 _is_it_job에서 IT 직군 1차 필터링 완료
     if summary.site == "catch":
+        return _check_position(title, settings)
+
+    required = settings.required_keywords_list or DEV_KEYWORDS
+    if not any(kw.lower() in title for kw in required):
+        return False
+
+    return _check_position(title, settings)
+
+
+def _check_position(title: str, settings) -> bool:
+    if not settings.positions_list:
         return True
-    for dev in DEV_KEYWORDS:
-        if dev.lower() in title:
-            return True
-    return False
+    pos = extract_position(title)
+    # 분류 불가("") 또는 generic("개발")은 통과 — 광범위 제목의 백엔드 공고 누락 방지
+    if pos in {"", "개발"}:
+        return True
+    allowed = {p.lower() for p in settings.positions_list}
+    return pos.lower() in allowed
