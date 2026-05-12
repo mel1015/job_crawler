@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+from bs4 import BeautifulSoup
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -16,6 +17,7 @@ from .base import BaseCrawler, JobDetail, JobSummary, SearchCriteria
 
 SEARCH_URL = "https://www.catch.co.kr/api/v1.0/recruit/information/getRecruitList"
 DETAIL_BASE = "https://www.catch.co.kr/NCS/RecruitInfoDetails"
+DETAIL_API = "https://www.catch.co.kr/controls/recruitDetail/{rid}"
 
 _IT_KEYWORDS = (
     "웹개발", "소프트웨어", "네트워크/서버", "데이터분석", "IT기획", "모바일앱",
@@ -106,8 +108,29 @@ class CatchCrawler(BaseCrawler):
         )
 
     async def fetch_detail(self, summary: JobSummary) -> JobDetail:
-        # 검색 API에서 이미 메타데이터 확보. 상세 본문 API 미제공.
-        return JobDetail(summary=summary, body_text="")
+        url = DETAIL_API.format(rid=summary.external_id)
+        try:
+            await self._throttle()
+            r = await self._client.get(url)
+            r.raise_for_status()
+            body_text = _extract_body(r.text)
+        except httpx.HTTPError as e:
+            logger.error(f"catch detail failed {summary.external_id}: {e}")
+            return JobDetail(summary=summary, body_text="")
+        return JobDetail(summary=summary, body_text=body_text[:20000])
+
+
+def _extract_body(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup.select("script, style"):
+        tag.decompose()
+    for sel in (".btn_wrap", ".util_area", ".apply_area", "#header", "#footer", ".gnb"):
+        for tag in soup.select(sel):
+            tag.decompose()
+    main = soup.select_one(".recruit_detail") or soup.select_one(".wrap_recruit_cont") or soup.body
+    if main:
+        return main.get_text("\n", strip=True)
+    return soup.get_text("\n", strip=True)
 
 
 def _parse_dt(value: Any) -> datetime | None:
