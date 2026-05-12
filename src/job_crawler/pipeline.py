@@ -47,21 +47,27 @@ async def crawl_site(site: str, max_results: int) -> tuple[int, int, list[str]]:
 
         logger.info(f"[{site}] merged unique={len(merged)} across {len(keywords)} keywords")
 
-        fetched = 0
+        all_summaries = list(merged.values())
+        fetched = len(all_summaries)
+        filtered = [s for s in all_summaries if pass_filters(s)]
+        logger.info(f"[{site}] passed filter={len(filtered)}/{fetched}")
+
         new_count = 0
-        for s in merged.values():
-            fetched += 1
-            if not pass_filters(s):
-                logger.debug(f"[{site}] filtered out: {s.title}")
-                continue
-            try:
-                detail: JobDetail = await crawler.fetch_detail(s)
-            except Exception as e:  # noqa: BLE001
-                errors.append(f"detail {s.external_id}: {e}")
-                logger.warning(f"[{site}] detail failed {s.external_id}: {e}")
-                continue
-            if _upsert_job(detail):
-                new_count += 1
+        semaphore = asyncio.Semaphore(settings.crawl_concurrency)
+
+        async def fetch_one(s: JobSummary) -> None:
+            nonlocal new_count
+            async with semaphore:
+                try:
+                    detail: JobDetail = await crawler.fetch_detail(s)
+                except Exception as e:  # noqa: BLE001
+                    errors.append(f"detail {s.external_id}: {e}")
+                    logger.warning(f"[{site}] detail failed {s.external_id}: {e}")
+                    return
+                if _upsert_job(detail):
+                    new_count += 1
+
+        await asyncio.gather(*[fetch_one(s) for s in filtered])
     finally:
         await crawler.aclose()
 

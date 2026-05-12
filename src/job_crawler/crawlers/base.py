@@ -47,15 +47,13 @@ class BaseCrawler(ABC):
     def __init__(self, request_delay_sec: float = 2.0):
         self.request_delay_sec = request_delay_sec
         self._last_request_ts = 0.0
-        self._lock = asyncio.Lock()
 
     async def _throttle(self) -> None:
-        async with self._lock:
-            now = asyncio.get_event_loop().time()
-            wait = self.request_delay_sec - (now - self._last_request_ts)
-            if wait > 0:
-                await asyncio.sleep(wait)
-            self._last_request_ts = asyncio.get_event_loop().time()
+        now = asyncio.get_event_loop().time()
+        wait = self.request_delay_sec - (now - self._last_request_ts)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        self._last_request_ts = asyncio.get_event_loop().time()
 
     @abstractmethod
     async def search(self, criteria: SearchCriteria) -> list[JobSummary]:
