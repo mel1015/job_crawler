@@ -42,6 +42,7 @@ class Job(Base):
     body_raw: Mapped[str | None] = mapped_column(Text)
     image_urls: Mapped[list[str] | None] = mapped_column(JSON)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_applied: Mapped[bool] = mapped_column(Boolean, default=False)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

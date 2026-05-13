@@ -1,0 +1,10 @@
+<span id="applied-btn-{{ job.id }}">
+  <button class="btn {% if job.is_applied %}applied-on{% else %}applied-off{% endif %} sm"
+          hx-post="/jobs/{{ job.id }}/toggle-applied"
+          hx-target="#applied-btn-{{ job.id }}"
+          hx-swap="outerHTML"
+          onclick="event.stopPropagation(); this.closest('.job-card').classList.toggle('is-applied');"
+          title="{% if job.is_applied %}지원 완료 취소{% else %}지원 완료 표시{% endif %}">
+    {% if job.is_applied %}✓ 지원완료{% else %}미지원{% endif %}
+  </button>
+</span>
