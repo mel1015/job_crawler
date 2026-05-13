@@ -121,6 +121,8 @@ def _upsert_job(detail: JobDetail) -> bool:
             existing.experience = detail.experience
             existing.salary = detail.salary
             existing.tech_stack = detail.tech_stack or None
+            if detail.image_urls:
+                existing.image_urls = detail.image_urls
             return False
         job = Job(
             site=s.site,
@@ -137,6 +139,7 @@ def _upsert_job(detail: JobDetail) -> bool:
             body_text=detail.body_text,
             body_raw=detail.body_raw,
             deadline_at=detail.deadline_at,
+            image_urls=detail.image_urls or None,
         )
         session.add(job)
         return True

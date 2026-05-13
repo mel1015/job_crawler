@@ -7,6 +7,8 @@ from datetime import datetime
 
 from loguru import logger
 
+IMAGE_ONLY_PLACEHOLDER = "(이미지 공고 — 원문 링크에서 확인)"
+
 
 @dataclass
 class SearchCriteria:
@@ -38,6 +40,7 @@ class JobDetail:
     salary: str | None = None
     tech_stack: list[str] = field(default_factory=list)
     deadline_at: datetime | None = None
+    image_urls: list[str] = field(default_factory=list)
 
 
 class BaseCrawler(ABC):

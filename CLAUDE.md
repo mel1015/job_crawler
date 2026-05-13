@@ -102,6 +102,15 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 3. `get_unscored_jobs()` 조회 → 이력서 비교 → `save_claude_scores()` 저장
 4. 대시보드 `?sort=rate` 로 합격률 순 정렬 확인
 
+**이미지 공고 처리** (`is_image_only=True`인 공고):
+> **주의**: 이 기능 도입 전 수집된 catch 이미지 공고는 `image_urls=NULL` 상태. 머지 후 `jc-crawl --site catch` 1회 재실행하면 `_upsert_job`의 기존 공고 업데이트 경로에서 `image_urls`가 채워짐.
+- Gemini 온디맨드: `verdict=평가불가`, `match_rate=NULL` 로 저장 (LLM 호출 없음)
+- Claude Code 배치: `image_urls` 필드에 이미지 URL 목록 포함. 이미지 공고 스코어링 절차:
+  1. `job["is_image_only"] == True` 확인
+  2. `job["image_urls"]` 의 각 URL을 Bash로 `/tmp/` 에 다운로드: `curl -sL <url> -o /tmp/img_<job_id>_N.jpg`
+  3. `Read` 툴로 이미지 파일 시각적 분석
+  4. 분석 결과로 일반 공고와 동일한 스코어 포맷 산출 후 `save_claude_scores()` 저장
+
 ### 웹 (`web/`)
 
 FastAPI + Jinja2 + HTMX. 라우터:
@@ -132,7 +141,7 @@ class MySiteCrawler(BaseCrawler):
 |------|------|
 | saramin 타임아웃 | `.env`의 `REQUEST_DELAY_SEC` 증가 (예: 5) |
 | jobkorea 결과 0건 | `crawlers/jobkorea.py:_parse_list` CSS 셀렉터 확인 |
-| catch body_text 비어있음 | 이미지 공고 — 정상 동작 |
+| catch body_text 이미지 공고 placeholder | 이미지 공고 — `verdict=평가불가`로 분기됨. 크롤 재실행 시 `image_urls` 컬럼에 URL 저장 |
 | 합격률 평가 500 에러 | `.env`의 `GEMINI_API_KEY` 확인 |
 | `jc-analyze` 명령 없음 | `pip install -e .` 재실행 |
 | `save_claude_scores` ModuleNotFoundError | 스크립트에 `sys.path.insert(0, "<repo root>")` 추가 |
