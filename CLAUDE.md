@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 브랜치 전략 (필수)
+
+`feature/<name>` → `develop` (머지) → `main` (PR)
+
+- main, develop에 **직접 커밋/push 금지**
+- "git 최신화", "커밋해줘", "올려줘" 등 어떤 표현이든 git 작업 전 **현재 브랜치 확인 필수**
+- main 또는 develop이면 **반드시 `git checkout -b feature/<name>` 먼저** 실행
+
 ## Commands
 
 ```bash
