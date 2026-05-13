@@ -215,7 +215,17 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .job-card .meta-line strong { color: var(--fg2); font-weight: 700; font-size: 15px; }
 .job-card .meta-line .sep { color: var(--border2); }
 .job-card .meta-line .date { color: var(--mute); font-variant-numeric: tabular-nums; }
+.job-card .meta-line .deadline { font-variant-numeric: tabular-nums; font-weight: 600; }
+.job-card .meta-line .deadline.urgent { color: #e53e3e; }
+.job-card .meta-line .deadline.soon { color: #dd6b20; }
+.job-card .meta-line .deadline.expired { color: var(--mute); text-decoration: line-through; }
 .job-card .score-area { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+.job-card.is-applied { opacity: 0.45; }
+.job-card.is-applied:hover { opacity: 0.75; }
+.btn.applied-off { background: transparent; color: #e53e3e; border: 1px solid #e53e3e; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+.btn.applied-off:hover { background: #fff5f5; }
+.btn.applied-on { background: transparent; color: #3182ce; border: 1px solid #3182ce; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+.btn.applied-on:hover { background: #ebf8ff; }
 
 .job-card .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
 .job-card .tags .expand-btn {

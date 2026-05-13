@@ -155,3 +155,16 @@ def _render_score_fragment(request: Request, job_id: int) -> HTMLResponse:
         if job is None:
             raise HTTPException(404)
         return templates.TemplateResponse(request, "_score.html", {"job": job})
+
+
+@router.post("/jobs/{job_id}/toggle-applied", response_class=HTMLResponse)
+def toggle_applied(request: Request, job_id: int):
+    with session_scope() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            raise HTTPException(404)
+        job.is_applied = not job.is_applied
+        session.flush()
+        return templates.TemplateResponse(
+            request, "_applied_btn.html", {"job": job}
+        )

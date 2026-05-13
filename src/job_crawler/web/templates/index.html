@@ -87,7 +87,7 @@
 {% for j in jobs %}
   {% set pos = extract_position(j.title) %}
   {% set is_new = j.first_seen_at and (now - j.first_seen_at).total_seconds() < 86400 %}
-  <div class="job-card"
+  <div class="job-card {% if j.is_applied %}is-applied{% endif %}"
        onclick="if(!event.target.closest('button,a,.score-pill,.spinner,.expand-btn'))location.href='/jobs/{{ j.id }}'" style="cursor:pointer;">
     <div class="top-row">
       <div class="main-info">
@@ -109,6 +109,19 @@
           {% endif %}
           <span class="sep">•</span>
           <span class="date">{{ j.first_seen_at.strftime('%m/%d') if j.first_seen_at else '-' }}</span>
+          {% if j.deadline_at %}
+            <span class="sep">•</span>
+            {% set days_left = (j.deadline_at - now).days %}
+            {% if days_left < 0 %}
+              <span class="deadline expired">마감</span>
+            {% elif days_left <= 3 %}
+              <span class="deadline urgent">D-{{ days_left }}</span>
+            {% elif days_left <= 7 %}
+              <span class="deadline soon">D-{{ days_left }}</span>
+            {% else %}
+              <span class="deadline">{{ j.deadline_at.strftime('%m/%d') }} 마감</span>
+            {% endif %}
+          {% endif %}
         </div>
         {% if j.tech_stack %}
         <div class="tags">
@@ -122,6 +135,7 @@
         {% endif %}
       </div>
       <div class="score-area">
+        {% with job=j %}{% include '_applied_btn.html' %}{% endwith %}
         {% with job=j %}{% include '_score.html' %}{% endwith %}
       </div>
     </div>
