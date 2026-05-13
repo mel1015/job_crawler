@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from .base import BaseCrawler, JobDetail, JobSummary, SearchCriteria
+from .base import IMAGE_ONLY_PLACEHOLDER, BaseCrawler, JobDetail, JobSummary, SearchCriteria
 
 SEARCH_URL = "https://www.catch.co.kr/api/v1.0/recruit/information/getRecruitList"
 DETAIL_BASE = "https://www.catch.co.kr/NCS/RecruitInfoDetails"
@@ -113,14 +113,17 @@ class CatchCrawler(BaseCrawler):
             await self._throttle()
             r = await self._client.get(url)
             r.raise_for_status()
-            body_text = _extract_body(r.text)
+            body_text, image_urls = _extract_body_and_images(r.text)
         except httpx.HTTPError as e:
             logger.error(f"catch detail failed {summary.external_id}: {e}")
             return JobDetail(summary=summary, body_text="")
-        return JobDetail(summary=summary, body_text=body_text[:20000])
+        return JobDetail(summary=summary, body_text=body_text[:20000], image_urls=image_urls)
 
 
-def _extract_body(html: str) -> str:
+_CATCH_BASE = "https://www.catch.co.kr"
+
+
+def _extract_body_and_images(html: str) -> tuple[str, list[str]]:
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup.select("script, style"):
         tag.decompose()
@@ -130,9 +133,24 @@ def _extract_body(html: str) -> str:
     main = soup.select_one(".recruit_detail") or soup.select_one(".wrap_recruit_cont") or soup.body
     text = main.get_text("\n", strip=True) if main else soup.get_text("\n", strip=True)
     if not text:
-        # 이미지로만 JD를 올린 공고 — 텍스트 추출 불가
-        return "(이미지 공고 — 원문 링크에서 확인)"
-    return text
+        image_urls = _extract_image_urls(soup)
+        return IMAGE_ONLY_PLACEHOLDER, image_urls
+    return text, []
+
+
+def _extract_image_urls(soup: BeautifulSoup) -> list[str]:
+    urls: list[str] = []
+    for img in soup.select("img[src]"):
+        src = img["src"]
+        if not src or src.startswith("data:"):
+            continue
+        if src.startswith("//"):
+            src = "https:" + src
+        elif src.startswith("/"):
+            src = _CATCH_BASE + src
+        if src not in urls:
+            urls.append(src)
+    return urls
 
 
 def _parse_dt(value: Any) -> datetime | None:

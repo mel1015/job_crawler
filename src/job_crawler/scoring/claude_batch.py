@@ -14,8 +14,15 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, or_, select
 
+from ..crawlers.base import IMAGE_ONLY_PLACEHOLDER
 from ..db.models import Job, ScoreResult
 from ..db.session import session_scope
+
+_IMAGE_PLACEHOLDERS = {IMAGE_ONLY_PLACEHOLDER}
+
+
+def _is_image_only(body_text: str | None) -> bool:
+    return (body_text or "").strip() in _IMAGE_PLACEHOLDERS
 
 
 def get_unscored_jobs(limit: int = 50, days: int = 3) -> list[dict]:
@@ -56,6 +63,8 @@ def get_unscored_jobs(limit: int = 50, days: int = 3) -> list[dict]:
                 "tech_stack": j.tech_stack or [],
                 "salary": j.salary or "",
                 "body_text": (j.body_text or "")[:1500],
+                "is_image_only": _is_image_only(j.body_text),
+                "image_urls": j.image_urls or [],
             }
             for j in jobs
         ]
