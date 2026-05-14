@@ -215,10 +215,13 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .job-card .meta-line strong { color: var(--fg2); font-weight: 700; font-size: 15px; }
 .job-card .meta-line .sep { color: var(--border2); }
 .job-card .meta-line .date { color: var(--mute); font-variant-numeric: tabular-nums; }
-.job-card .meta-line .deadline { font-variant-numeric: tabular-nums; font-weight: 600; }
-.job-card .meta-line .deadline.urgent { color: #e53e3e; }
-.job-card .meta-line .deadline.soon { color: #dd6b20; }
-.job-card .meta-line .deadline.expired { color: var(--mute); text-decoration: line-through; }
+.job-card .meta-line .deadline { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.job-card .meta-line .deadline.urgent  { background: #2d0a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+.job-card .meta-line .deadline.soon    { background: #2a1a08; color: #fcd34d; border: 1px solid #78350f; }
+.job-card .meta-line .deadline.normal  { background: var(--surface2); color: var(--fg2); border: 1px solid var(--border); }
+.job-card .meta-line .deadline.expired { background: var(--surface2); color: var(--mute); border: 1px solid var(--border); text-decoration: line-through; }
+.job-card .meta-line .deadline.always  { background: #0b2624; color: #2dd4bf; border: 1px solid #0e4a4e; }
+.job-card .meta-line .deadline.unknown { background: var(--surface2); color: var(--mute); border: 1px solid var(--border); font-style: italic; }
 .job-card .score-area { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
 .job-card.is-applied { opacity: 0.45; }
 .job-card.is-applied:hover { opacity: 0.75; }
@@ -242,6 +245,9 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .badge.site-wanted { background: #1a2744; color: #60a5fa; }
 .badge.site-saramin { background: #1a3328; color: #34d399; }
 .badge.site-jobkorea { background: #2a2418; color: #fbbf24; }
+.badge.site-catch { background: #2a1a2e; color: #c084fc; }
+.badge.site-jumpit { background: #2a1e12; color: #fb923c; }
+.badge.site-remember { background: #2a1a1e; color: #fda4af; }
 .badge.pos { background: var(--surface3); color: var(--fg2); border: 1px solid var(--border); text-transform: none; font-weight: 600; }
 
 .chip {

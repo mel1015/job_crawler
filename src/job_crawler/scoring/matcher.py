@@ -17,8 +17,6 @@ from ..resume.loader import load_resume
 from ..resume.models import ResumeProfile
 from .gemini_client import GeminiClient, GeminiError
 
-_IMAGE_PLACEHOLDERS = {IMAGE_ONLY_PLACEHOLDER}
-
 SYSTEM_PROMPT = """너는 한국 IT 채용 서류 전형 경험이 많은 테크 리크루터다.
 주어진 지원자 이력서와 채용 공고를 비교해 "예상 합격률(서류+1차 면접 통과)"을 산출한다.
 점수는 냉정하게 매긴다. 이력서에 증거가 있는 항목만 강점으로 인정한다.
@@ -84,7 +82,20 @@ def score_job(job_id: int, force: bool = False) -> ScoreResult:
         if existing and existing.status == "done" and not force:
             return existing
 
-        is_image = (job.body_text or "").strip() in _IMAGE_PLACEHOLDERS
+        if (job.body_text or "").strip() == IMAGE_ONLY_PLACEHOLDER:
+            if existing is None:
+                existing = ScoreResult(job_id=job_id)
+                session.add(existing)
+            existing.status = "done"
+            existing.match_rate = None
+            existing.verdict = "평가불가"
+            existing.strengths = []
+            existing.gaps = []
+            existing.red_flags = []
+            existing.action_tip = "이미지 공고입니다. 원문 링크에서 직접 확인 후 평가해주세요."
+            existing.model = "none"
+            existing.scored_at = datetime.utcnow()
+            return existing
 
         if existing is None:
             existing = ScoreResult(job_id=job_id, status="scoring")
@@ -105,22 +116,6 @@ def score_job(job_id: int, force: bool = False) -> ScoreResult:
             "salary": job.salary,
             "body_text": job.body_text,
         }
-
-    if is_image:
-        with session_scope() as session:
-            row = session.get(ScoreResult, score_pk)
-            row.status = "done"
-            row.match_rate = None
-            row.verdict = "평가불가"
-            row.strengths = []
-            row.gaps = []
-            row.red_flags = []
-            row.action_tip = "이미지 공고입니다. 원문 링크에서 직접 확인 후 평가해주세요."
-            row.model = "none"
-            row.scored_at = datetime.utcnow()
-            session.flush()
-            session.refresh(row)
-            return row
 
     resume = load_resume()
 

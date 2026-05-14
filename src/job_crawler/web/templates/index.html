@@ -109,8 +109,8 @@
           {% endif %}
           <span class="sep">•</span>
           <span class="date">{{ j.first_seen_at.strftime('%m/%d') if j.first_seen_at else '-' }}</span>
+          <span class="sep">•</span>
           {% if j.deadline_at %}
-            <span class="sep">•</span>
             {% set days_left = (j.deadline_at - now).days %}
             {% if days_left < 0 %}
               <span class="deadline expired">마감</span>
@@ -119,8 +119,12 @@
             {% elif days_left <= 7 %}
               <span class="deadline soon">D-{{ days_left }}</span>
             {% else %}
-              <span class="deadline">{{ j.deadline_at.strftime('%m/%d') }} 마감</span>
+              <span class="deadline normal">{{ j.deadline_at.strftime('%m/%d') }} 마감</span>
             {% endif %}
+          {% elif '상시채용' in (j.body_text or '') or '상시모집' in (j.body_text or '') or '상시 모집' in (j.body_text or '') %}
+            <span class="deadline always">상시채용</span>
+          {% else %}
+            <span class="deadline unknown">마감일 미확인</span>
           {% endif %}
         </div>
         {% if j.tech_stack %}

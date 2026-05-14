@@ -18,11 +18,8 @@ from ..crawlers.base import IMAGE_ONLY_PLACEHOLDER
 from ..db.models import Job, ScoreResult
 from ..db.session import session_scope
 
-_IMAGE_PLACEHOLDERS = {IMAGE_ONLY_PLACEHOLDER}
-
-
 def _is_image_only(body_text: str | None) -> bool:
-    return (body_text or "").strip() in _IMAGE_PLACEHOLDERS
+    return (body_text or "").strip() == IMAGE_ONLY_PLACEHOLDER
 
 
 def get_unscored_jobs(limit: int = 50, days: int = 3) -> list[dict]:
