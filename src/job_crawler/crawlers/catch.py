@@ -139,6 +139,7 @@ def _extract_body_and_images(html: str) -> tuple[str, list[str]]:
 
 
 def _extract_image_urls(soup: BeautifulSoup) -> list[str]:
+    seen: set[str] = set()
     urls: list[str] = []
     for img in soup.select("img[src]"):
         src = img["src"]
@@ -148,7 +149,8 @@ def _extract_image_urls(soup: BeautifulSoup) -> list[str]:
             src = "https:" + src
         elif src.startswith("/"):
             src = _CATCH_BASE + src
-        if src not in urls:
+        if src not in seen:
+            seen.add(src)
             urls.append(src)
     return urls
 
