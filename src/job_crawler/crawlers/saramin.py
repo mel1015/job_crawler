@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -154,7 +155,20 @@ class SaraminCrawler(BaseCrawler):
             body_raw=html[:50000],
             experience=meta.get("experience"),
             employment_type=meta.get("employment_type"),
+            deadline_at=self._extract_deadline(html),
         )
+
+    def _extract_deadline(self, html: str) -> datetime | None:
+        soup = BeautifulSoup(html, "html.parser")
+        dt_end = soup.select_one("dt.end")
+        if dt_end:
+            dd = dt_end.find_next_sibling("dd")
+            if dd:
+                try:
+                    return datetime.strptime(dd.get_text(strip=True), "%Y.%m.%d %H:%M")
+                except ValueError:
+                    pass
+        return None
 
     def _extract_body(self, html: str) -> str:
         soup = BeautifulSoup(html, "html.parser")
