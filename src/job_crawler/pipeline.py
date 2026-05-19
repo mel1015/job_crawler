@@ -123,6 +123,8 @@ def _upsert_job(detail: JobDetail) -> bool:
             existing.tech_stack = detail.tech_stack or None
             if detail.image_urls:
                 existing.image_urls = detail.image_urls
+            if detail.deadline_at is not None:
+                existing.deadline_at = detail.deadline_at
             return False
         job = Job(
             site=s.site,
