@@ -164,7 +164,6 @@ def toggle_applied(request: Request, job_id: int):
         if job is None:
             raise HTTPException(404)
         job.is_applied = not job.is_applied
-        session.flush()
         return templates.TemplateResponse(
             request, "_applied_btn.html", {"job": job}
         )
