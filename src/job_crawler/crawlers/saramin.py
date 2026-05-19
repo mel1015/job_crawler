@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -146,18 +147,30 @@ class SaraminCrawler(BaseCrawler):
             logger.error(f"saramin detail failed {summary.external_id}: {e}")
             return JobDetail(summary=summary, body_text="")
 
-        body_text = self._extract_body(html)
+        soup = BeautifulSoup(html, "html.parser")
         meta = self._meta.get(summary.external_id, {})
         return JobDetail(
             summary=summary,
-            body_text=body_text[:20000],
+            body_text=self._extract_body(soup)[:20000],
             body_raw=html[:50000],
             experience=meta.get("experience"),
             employment_type=meta.get("employment_type"),
+            deadline_at=self._extract_deadline(soup),
         )
 
-    def _extract_body(self, html: str) -> str:
-        soup = BeautifulSoup(html, "html.parser")
+    def _extract_deadline(self, soup: BeautifulSoup) -> datetime | None:
+        dt_end = soup.select_one("dt.end")
+        if not dt_end:
+            return None
+        dd = dt_end.find_next_sibling("dd")
+        if not dd:
+            return None
+        try:
+            return datetime.strptime(dd.get_text(strip=True), "%Y.%m.%d %H:%M")
+        except ValueError:
+            return None
+
+    def _extract_body(self, soup: BeautifulSoup) -> str:
         content_keywords = ("주요업무", "자격요건", "모집분야", "담당업무", "지원자격", "우대사항")
         for jv in soup.select(".jv_cont"):
             text = jv.get_text(" ", strip=True)
