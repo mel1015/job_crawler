@@ -28,7 +28,7 @@
     <div class="value">{{ stats.by_site|length }}</div>
     <div class="badge-list">
       {% for site, n in stats.by_site.items() %}
-        <span class="badge site-{{ site }}">{{ site }} {{ n }}</span>
+        <span class="badge site-{{ site }}">{{ site | upper }} {{ n }}</span>
       {% endfor %}
     </div>
   </div>
@@ -44,7 +44,7 @@
     <select name="site" onchange="this.form.submit()">
       <option value="">전체 사이트</option>
       {% for s in sites %}
-        <option value="{{ s }}" {% if filters.site == s %}selected{% endif %}>{{ s }}</option>
+        <option value="{{ s }}" {% if filters.site == s %}selected{% endif %}>{{ s | upper }}</option>
       {% endfor %}
     </select>
   </div>
@@ -54,6 +54,7 @@
       <option value="">평가 상태</option>
       <option value="scored" {% if filters.status == 'scored' %}selected{% endif %}>평가완료</option>
       <option value="unscored" {% if filters.status == 'unscored' %}selected{% endif %}>미평가</option>
+      <option value="applied" {% if filters.status == 'applied' %}selected{% endif %}>지원완료</option>
     </select>
   </div>
   <div class="field">
@@ -76,8 +77,8 @@
 <div class="active-filters">
   <span class="af-label">적용된 필터:</span>
   {% if filters.q %}<span class="af-chip">검색: {{ filters.q }}</span>{% endif %}
-  {% if filters.site %}<span class="af-chip">{{ filters.site }}</span>{% endif %}
-  {% if filters.status %}<span class="af-chip">{{ '평가완료' if filters.status == 'scored' else '미평가' }}</span>{% endif %}
+  {% if filters.site %}<span class="af-chip">{{ filters.site | upper }}</span>{% endif %}
+  {% if filters.status %}<span class="af-chip">{{ '평가완료' if filters.status == 'scored' else ('미평가' if filters.status == 'unscored' else '지원완료') }}</span>{% endif %}
   {% if filters.min_rate %}<span class="af-chip">합격률 ≥ {{ filters.min_rate }}%</span>{% endif %}
   <a href="/" class="af-reset">전체 초기화</a>
 </div>
@@ -92,7 +93,7 @@
     <div class="top-row">
       <div class="main-info">
         <div class="title-line">
-          <span class="badge site-{{ j.site }}">{{ j.site }}</span>
+          <span class="badge site-{{ j.site }}">{{ j.site | upper }}</span>
           {% if pos %}<span class="badge pos">{{ pos }}</span>{% endif %}
           {% if is_new %}<span class="badge new-badge">NEW</span>{% endif %}
           <a href="/jobs/{{ j.id }}">{{ j.title }}</a>
