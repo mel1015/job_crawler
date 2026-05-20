@@ -74,6 +74,8 @@ def index(
             jobs = [j for j in jobs if j.score and j.score.status == "done"]
         elif status == "unscored":
             jobs = [j for j in jobs if not (j.score and j.score.status == "done")]
+        elif status == "applied":
+            jobs = [j for j in jobs if j.is_applied]
         if min_rate_val is not None:
             jobs = [j for j in jobs if j.score and (j.score.match_rate or 0) >= min_rate_val]
 
