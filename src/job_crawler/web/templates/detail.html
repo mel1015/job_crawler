@@ -6,7 +6,7 @@
 <div class="card">
   <div class="detail-header">
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-      <span class="badge site-{{ job.site }}">{{ job.site }}</span>
+      <span class="badge site-{{ job.site }}">{{ job.site | upper }}</span>
       {% set pos = extract_position(job.title) %}
       {% if pos %}<span class="badge pos">{{ pos }}</span>{% endif %}
     </div>
