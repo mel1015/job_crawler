@@ -4,7 +4,7 @@
           hx-target="#ignored-btn-{{ job.id }}"
           hx-swap="outerHTML"
           hx-disabled-elt="this"
-          onclick="event.stopPropagation(); if (!this.classList.contains('ignored-on')) { this.closest('.job-card').remove(); }"
+          onclick="event.stopPropagation(); if (!this.classList.contains('ignored-on')) { this.closest('.job-card').style.display='none'; }"
           title="{% if job.is_ignored %}관심없음 취소{% else %}관심없음 표시{% endif %}">
     {% if job.is_ignored %}✕ 관심없음{% else %}관심없음{% endif %}
   </button>
