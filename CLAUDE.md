@@ -80,9 +80,17 @@ pytest tests/test_resume_loader.py  # 단일 파일
 SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 
 모델:
-- `Job`: 공고 본문 (`body_text`, `body_raw`), `is_closed`, `last_seen_at`, `score_result` 관계
+- `Job`: 공고 본문 (`body_text`, `body_raw`), `is_closed`, `is_applied`, `is_ignored`, `last_seen_at`, `score_result` 관계
+  - `is_applied`: 지원완료 표시 (토글, 기본 목록에 포함)
+  - `is_ignored`: 관심없음 표시 (토글, 기본 목록에서 숨김 — `status=ignored` 필터로만 열람)
 - `ScoreResult`: 합격률 평가 결과 (`match_rate`, `verdict`, `strengths`, `gaps`, `red_flags`, `action_tip`, `model`). `model` 필드로 Gemini/claude-code 구분
 - `CrawlRun`: 실행 이력 (`site`, `fetched`, `new_jobs`, `status`, `errors`)
+
+마이그레이션 이력:
+- `866a1946d299_init.py`: 초기 스키마
+- `a1b2c3d4e5f6_add_image_urls_to_jobs.py`: `image_urls` JSON 컬럼 추가
+- `b2c3d4e5f6a7_add_is_applied_to_jobs.py`: `is_applied` Boolean 컬럼 추가
+- `c3d4e5f6a7b8_add_is_ignored_to_jobs.py`: `is_ignored` Boolean 컬럼 추가
 
 ### 합격률 평가 (`scoring/`)
 
@@ -114,8 +122,15 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 ### 웹 (`web/`)
 
 FastAPI + Jinja2 + HTMX. 라우터:
-- `routers/jobs.py`: 목록/상세/합격률 평가/재평가
+- `routers/jobs.py`: 목록/상세/합격률 평가/재평가/지원완료 토글/관심없음 토글
 - `routers/runs.py`: 크롤링 이력
+
+대시보드 필터 (`status` 파라미터):
+- `scored` / `unscored`: 평가 완료/미평가
+- `applied`: `is_applied=True` 공고
+- `ignored`: `is_ignored=True` 공고만 표시 (이 외 모든 상태에서는 `is_ignored=False` 공고만 표시)
+
+> **주의**: `is_ignored` 필터링은 DB 쿼리가 아닌 Python 리스트 단계에서 처리. `status=ignored`일 때 ignored=True, 그 외엔 ignored=False 공고만 노출. DB 쿼리에서 `is_ignored==False` 조건을 넣으면 "관심없음 보기"가 영원히 빈 리스트가 됨.
 
 ### 설정 (`config.py`)
 
@@ -143,6 +158,9 @@ class MySiteCrawler(BaseCrawler):
 | jobkorea 결과 0건 | `crawlers/jobkorea.py:_parse_list` CSS 셀렉터 확인 |
 | catch body_text 이미지 공고 placeholder | 이미지 공고 — `verdict=평가불가`로 분기됨. 크롤 재실행 시 `image_urls` 컬럼에 URL 저장 |
 | 합격률 평가 500 에러 | `.env`의 `GEMINI_API_KEY` 확인 |
-| `jc-analyze` 명령 없음 | `pip install -e .` 재실행 |
-| `save_claude_scores` ModuleNotFoundError | 스크립트에 `sys.path.insert(0, "<repo root>")` 추가 |
+| `jc-crawl` 명령 없음 | `pip install -e .`가 아닌 `source .venv/bin/activate` 먼저 확인 |
+| `save_claude_scores` ModuleNotFoundError | 스크립트에 `sys.path.insert(0, "<repo root>/src")` 추가 |
 | `alembic upgrade head` 실패 | `mkdir -p data` 먼저 실행 |
+| 대시보드 포트 충돌 (Errno 48) | `lsof -i :8000 -n -P` 로 PID 확인 후 `kill <PID>` |
+| `load_resume()` TypeError | `ResumeProfile` 객체 반환 — 텍스트는 `.raw_text`, 임포트는 `job_crawler.resume.loader` |
+| 관심없음 버튼 클릭해도 DB 저장 안 됨 | onclick에서 `card.remove()` 쓰면 HTMX POST가 취소됨 — `style.display='none'` 사용 |
