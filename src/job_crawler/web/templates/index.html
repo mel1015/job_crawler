@@ -55,6 +55,7 @@
       <option value="scored" {% if filters.status == 'scored' %}selected{% endif %}>평가완료</option>
       <option value="unscored" {% if filters.status == 'unscored' %}selected{% endif %}>미평가</option>
       <option value="applied" {% if filters.status == 'applied' %}selected{% endif %}>지원완료</option>
+      <option value="ignored" {% if filters.status == 'ignored' %}selected{% endif %}>관심없음</option>
     </select>
   </div>
   <div class="field">
@@ -78,7 +79,7 @@
   <span class="af-label">적용된 필터:</span>
   {% if filters.q %}<span class="af-chip">검색: {{ filters.q }}</span>{% endif %}
   {% if filters.site %}<span class="af-chip">{{ filters.site | upper }}</span>{% endif %}
-  {% if filters.status %}<span class="af-chip">{{ '평가완료' if filters.status == 'scored' else ('미평가' if filters.status == 'unscored' else '지원완료') }}</span>{% endif %}
+  {% if filters.status %}<span class="af-chip">{{ '평가완료' if filters.status == 'scored' else ('미평가' if filters.status == 'unscored' else ('지원완료' if filters.status == 'applied' else '관심없음')) }}</span>{% endif %}
   {% if filters.min_rate %}<span class="af-chip">합격률 ≥ {{ filters.min_rate }}%</span>{% endif %}
   <a href="/" class="af-reset">전체 초기화</a>
 </div>
@@ -126,6 +127,7 @@
         {% endif %}
       </div>
       <div class="score-area">
+        {% with job=j %}{% include '_ignored_btn.html' %}{% endwith %}
         {% with job=j %}{% include '_applied_btn.html' %}{% endwith %}
         {% with job=j %}{% include '_score.html' %}{% endwith %}
       </div>
