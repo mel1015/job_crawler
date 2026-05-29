@@ -10,8 +10,9 @@
 - **병렬 fetch**: `asyncio.gather` + `Semaphore(CRAWL_CONCURRENCY)` — 동시 N개 상세 조회
 - **세분화 필터**: 블랙리스트 키워드/기업명, 직군 화이트리스트, 제목 필수 키워드
 - **합격률 평가는 온디맨드**: 자동 호출 금지, 대시보드에서 건별 버튼으로만 Gemini 호출
+- **Claude Code 배치 스코어링**: Gemini API 비용 없이 Claude Code 세션에서 직접 이력서 매칭 분석 (`scoring/claude_batch.py`)
 - **저장**: SQLite (`data/jobs.db`), SQLAlchemy 2.0 + Alembic
-- **UI**: FastAPI + HTMX 대시보드 (필터/정렬/상세/합격률 분석)
+- **UI**: FastAPI + HTMX 대시보드 (필터/정렬/상세/합격률 분석/지원완료/관심없음)
 - **스케줄**: APScheduler (09:00 / 19:00 KST)
 
 ## 지원 사이트
@@ -43,12 +44,13 @@ src/job_crawler/
 │   ├── remember.py
 │   ├── catch.py
 │   ├── registry.py        # ACTIVE_SITES, build_crawler()
-│   └── company/           # 개별 기업 채용 페이지 (toss 등)
+│   └── company/           # 개별 기업 채용 페이지 (toss, greeting 등, ACTIVE_SITES 미포함)
 ├── db/models.py           # Job / ScoreResult / CrawlRun
 ├── resume/loader.py       # MD → dict
 ├── scoring/
 │   ├── gemini_client.py   # response_schema 기반 JSON 강제
-│   └── matcher.py         # 단건 평가 (status=scoring 락)
+│   ├── matcher.py         # 단건 평가 (status=scoring 락)
+│   └── claude_batch.py    # Claude Code 배치 스코어링 (get_unscored_jobs / save_claude_scores)
 ├── filters/criteria.py    # BLACKLIST_KEYWORDS, DEV_KEYWORDS, extract_position, pass_filters
 └── web/                   # FastAPI + Jinja2 (HTMX)
 ```
@@ -106,22 +108,14 @@ alembic upgrade head
 
 ```bash
 # 전체 활성 사이트 (ACTIVE_SITES)
-.venv/bin/python -m job_crawler.pipeline --limit 300
+jc-crawl --limit 300
 
 # 단일 사이트
-.venv/bin/python -m job_crawler.pipeline --site wanted --limit 100
-.venv/bin/python -m job_crawler.pipeline --site saramin --limit 100
+jc-crawl --site wanted --limit 100
+jc-crawl --site saramin --limit 100
 
 # 여러 사이트
-.venv/bin/python -m job_crawler.pipeline --site wanted --site saramin --limit 100
-```
-
-또는 가상환경 활성화 후:
-
-```bash
-source .venv/bin/activate
-jc-crawl --limit 300
-jc-crawl --site wanted --limit 100
+jc-crawl --site wanted --site saramin --limit 100
 ```
 
 동작:
@@ -141,8 +135,10 @@ jc-web
 - 목록: 사이트/회사/제목/합격률/버딕트/등록일 + 필터/정렬
 - 상세: `/jobs/{id}` — 원문 링크, 기술스택, 본문
 - **합격률 평가 버튼**: 클릭 시 `POST /jobs/{id}/score` → Gemini 1회 호출
-- **재평가**: `/jobs/{id}/rescore`
+- **재평가**: `POST /jobs/{id}/rescore`
 - **분석 펼치기**: strengths/gaps/red_flags/action_tip 인라인 표시
+- **지원완료 토글**: `POST /jobs/{id}/toggle-applied` — 지원완료 표시/해제
+- **관심없음 토글**: `POST /jobs/{id}/toggle-ignored` — 기본 목록에서 숨김/복원
 
 ### 스케줄러
 
@@ -152,12 +148,25 @@ nohup .venv/bin/jc-scheduler > logs/scheduler.log &
 
 매일 09:00 / 19:00 KST에 `ACTIVE_SITES` 전부 크롤링.
 
+## 대시보드 필터
+
+| 필터 | 설명 |
+|------|------|
+| 검색 | 제목·회사·본문 텍스트 검색 |
+| 사이트 | 특정 사이트만 표시 |
+| 평가완료 | ScoreResult가 있는 공고만 |
+| 미평가 | ScoreResult가 없는 공고만 |
+| 지원완료 | `is_applied=True` 공고만 |
+| 관심없음 | `is_ignored=True` 공고만 (기본 목록에서는 숨김) |
+| 합격률 최소값 | match_rate ≥ N% 필터 |
+| 정렬 | 최신순 / 합격률순 |
+
 ## 필터링 동작
 
 ```
 제목 BLACKLIST_KEYWORDS 체크
     → 기업명 BLACKLIST_COMPANIES 체크
-    → (catch 제외) REQUIRED_KEYWORDS 체목 포함 여부 체크
+    → (catch 제외) REQUIRED_KEYWORDS 제목 포함 여부 체크
     → DESIRED_POSITIONS 직군 화이트리스트 체크
         (직군 분류 불가 "" 또는 generic "개발"은 통과)
 ```
@@ -169,5 +178,9 @@ nohup .venv/bin/jc-scheduler > logs/scheduler.log &
 | saramin 타임아웃 | IP 차단 | `REQUEST_DELAY_SEC` 증가 (예: 5) |
 | jobkorea 결과 0건 | Tailwind 셀렉터 개편 | `crawlers/jobkorea.py:_parse_list` 셀렉터 확인 |
 | catch body_text 비어있음 | 이미지 공고 | 정상 — `(이미지 공고 — 원문 링크에서 확인)` 표시됨 |
-| `합격률 평가` 500 에러 | Gemini API 키 누락/만료 | `.env`의 `GEMINI_API_KEY` 확인 |
+| 합격률 평가 500 에러 | Gemini API 키 누락/만료 | `.env`의 `GEMINI_API_KEY` 확인 |
 | `alembic upgrade head` 실패 | `data/` 디렉토리 없음 | `mkdir -p data` |
+| `jc-crawl` 명령 없음 | venv 미활성화 | `pip install -e .` 아닌 `source .venv/bin/activate` |
+| 대시보드 포트 충돌 (Errno 48) | 기존 프로세스 살아있음 | `lsof -i :8000 -n -P` → `kill <PID>` |
+| `save_claude_scores` ModuleNotFoundError | sys.path 누락 | 스크립트에 `sys.path.insert(0, "<repo root>/src")` 추가 |
+| `load_resume()` TypeError | ResumeProfile 객체 반환 | 텍스트는 `.raw_text`, 임포트는 `job_crawler.resume.loader` |
