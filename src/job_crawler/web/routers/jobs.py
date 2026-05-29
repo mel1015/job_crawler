@@ -21,7 +21,7 @@ def index(
     request: Request,
     site: str | None = Query(None),
     min_rate: str | None = Query(None),
-    status: str | None = Query(None, description="scored | unscored"),
+    status: str | None = Query(None, description="scored | unscored | applied | ignored"),
     q: str | None = Query(None),
     sort: str = Query("latest", description="latest | rate"),
 ):
@@ -58,7 +58,17 @@ def index(
             by_site[j.site] = by_site.get(j.site, 0) + 1
         stats["by_site"] = by_site
 
-        jobs = all_jobs
+        if status == "ignored":
+            jobs = [j for j in all_jobs if j.is_ignored]
+        else:
+            jobs = [j for j in all_jobs if not j.is_ignored]
+            if status == "scored":
+                jobs = [j for j in jobs if j.score and j.score.status == "done"]
+            elif status == "unscored":
+                jobs = [j for j in jobs if not (j.score and j.score.status == "done")]
+            elif status == "applied":
+                jobs = [j for j in jobs if j.is_applied]
+
         if site:
             jobs = [j for j in jobs if j.site == site]
         if q:
@@ -70,12 +80,6 @@ def index(
                 or ql in (j.company or "").lower()
                 or ql in (j.body_text or "").lower()
             ]
-        if status == "scored":
-            jobs = [j for j in jobs if j.score and j.score.status == "done"]
-        elif status == "unscored":
-            jobs = [j for j in jobs if not (j.score and j.score.status == "done")]
-        elif status == "applied":
-            jobs = [j for j in jobs if j.is_applied]
         if min_rate_val is not None:
             jobs = [j for j in jobs if j.score and (j.score.match_rate or 0) >= min_rate_val]
 
@@ -168,4 +172,16 @@ def toggle_applied(request: Request, job_id: int):
         job.is_applied = not job.is_applied
         return templates.TemplateResponse(
             request, "_applied_btn.html", {"job": job}
+        )
+
+
+@router.post("/jobs/{job_id}/toggle-ignored", response_class=HTMLResponse)
+def toggle_ignored(request: Request, job_id: int):
+    with session_scope() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            raise HTTPException(404)
+        job.is_ignored = not job.is_ignored
+        return templates.TemplateResponse(
+            request, "_ignored_btn.html", {"job": job}
         )
