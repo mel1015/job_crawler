@@ -82,7 +82,7 @@ def get_unscored_jobs(limit: int = 50, days: int = 3) -> list[dict]:
                 "experience": j.experience or "",
                 "tech_stack": j.tech_stack or [],
                 "salary": j.salary or "",
-                "body_text": (j.body_text or "")[:1500],
+                "body_text": j.body_text or "",
                 "is_image_only": _is_image_only(j.body_text),
                 "image_urls": j.image_urls or [],
             }
