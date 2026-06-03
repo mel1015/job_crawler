@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from ..crawlers.base import IMAGE_ONLY_PLACEHOLDER
 from ..db.models import Job, ScoreResult
@@ -20,6 +20,29 @@ from ..db.session import session_scope
 
 def _is_image_only(body_text: str | None) -> bool:
     return (body_text or "").strip() == IMAGE_ONLY_PLACEHOLDER
+
+
+def count_unscored_jobs(days: int = 3) -> int:
+    """limit 없이 미평가 공고 실제 총 건수 반환."""
+    with session_scope() as session:
+        cutoff = datetime.now(tz=timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+        q = (
+            select(func.count())
+            .select_from(Job)
+            .outerjoin(Job.score)
+            .where(
+                Job.is_closed == False,  # noqa: E712
+                Job.first_seen_at >= cutoff,
+                or_(
+                    ScoreResult.id == None,  # noqa: E711
+                    and_(
+                        ScoreResult.model != "claude-code",
+                        ScoreResult.status != "scoring",
+                    ),
+                ),
+            )
+        )
+        return session.execute(q).scalar_one()
 
 
 def get_unscored_jobs(limit: int = 50, days: int = 3) -> list[dict]:
@@ -135,12 +158,19 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=200)
     args = parser.parse_args()
 
+    total = count_unscored_jobs(days=args.days)
     jobs = get_unscored_jobs(limit=args.limit, days=args.days)
 
-    print(f"\n미평가 공고: {len(jobs)}건")
     if not jobs:
+        print(f"\n미평가 공고: 0건")
         print("분석할 신규 공고가 없습니다.")
         return
+
+    fetched = len(jobs)
+    if total > fetched:
+        print(f"\n미평가 공고: {total}건 (이번 배치: {fetched}건)")
+    else:
+        print(f"\n미평가 공고: {total}건")
 
     by_site: dict[str, int] = {}
     for j in jobs:
