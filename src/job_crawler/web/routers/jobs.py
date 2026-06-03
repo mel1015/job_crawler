@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import defer, joinedload
 
 from ...db.models import Job, ScoreResult
 from ...db.session import session_scope
@@ -34,9 +34,13 @@ def index(
     except ValueError:
         min_rate_val = None
     with session_scope() as session:
+        # 목록·검색 어디서도 body_raw(원본 HTML, 활성 row당 평균 ~25KB)를 쓰지
+        # 않으므로 defer해 매 요청 직렬화 비용 제거. body_text는 q 검색에 필요해 유지.
         all_jobs = list(
             session.execute(
-                select(Job).options(joinedload(Job.score)).where(Job.is_closed == False)  # noqa: E712
+                select(Job)
+                .options(joinedload(Job.score), defer(Job.body_raw))
+                .where(Job.is_closed == False)  # noqa: E712
             ).unique().scalars()
         )
         # first_seen_at/last_seen_at은 SQLite func.now()로 naive UTC 저장 →
