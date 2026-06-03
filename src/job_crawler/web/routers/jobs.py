@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -39,7 +39,9 @@ def index(
                 select(Job).options(joinedload(Job.score)).where(Job.is_closed == False)  # noqa: E712
             ).unique().scalars()
         )
-        now = datetime.now()
+        # first_seen_at/last_seen_at은 SQLite func.now()로 naive UTC 저장 →
+        # 비교 기준 now도 naive UTC로 맞춰 9시간 오차 제거 ("신규" 배지·통계 정확)
+        now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
         week_ago = now - timedelta(days=7)
         day_ago = now - timedelta(days=1)
         stats = {
