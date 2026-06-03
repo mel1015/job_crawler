@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from loguru import logger
 from sqlalchemy import select
@@ -94,7 +94,7 @@ def score_job(job_id: int, force: bool = False) -> ScoreResult:
             existing.red_flags = []
             existing.action_tip = "이미지 공고입니다. 원문 링크에서 직접 확인 후 평가해주세요."
             existing.model = "none"
-            existing.scored_at = datetime.utcnow()
+            existing.scored_at = datetime.now(timezone.utc).replace(tzinfo=None)
             return existing
 
         if existing is None:
@@ -148,7 +148,7 @@ def score_job(job_id: int, force: bool = False) -> ScoreResult:
             row.tokens_in = result.tokens_in
             row.tokens_out = result.tokens_out
             row.error = None
-            row.scored_at = datetime.utcnow()
+            row.scored_at = datetime.now(timezone.utc).replace(tzinfo=None)
             session.flush()
             session.refresh(row)
             return row

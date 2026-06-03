@@ -116,7 +116,7 @@ def save_claude_scores(scores: list[dict]) -> int:
             existing = session.execute(
                 select(ScoreResult).where(ScoreResult.job_id == job_id)
             ).scalar_one_or_none()
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             if existing is None:
                 session.add(
                     ScoreResult(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Form, Request
 from fastapi.responses import HTMLResponse
@@ -109,7 +109,7 @@ async def start_crawl(
 
 @router.get("/crawl/status", response_class=HTMLResponse)
 def crawl_status(request: Request):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     with session_scope() as session:
         running = list(
             session.execute(
