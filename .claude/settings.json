@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/jc-analyze *)",
+      "Bash(.venv/bin/jc-crawl *)",
+      "Bash(.venv/bin/jc-web)",
+      "Bash(.venv/bin/jc-scheduler)",
+      "Bash(ruff check *)",
+      "Bash(mypy *)",
+      "Bash(pytest *)"
+    ]
+  }
+}
