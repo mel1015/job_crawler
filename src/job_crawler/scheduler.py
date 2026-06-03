@@ -16,7 +16,7 @@ from .pipeline import run as run_pipeline
 async def _job(limit: int = 30) -> None:
     logger.info("scheduled crawl start")
     try:
-        await run_pipeline(ACTIVE_SITES, limit=limit)
+        await run_pipeline(ACTIVE_SITES, max_results=limit)
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=e).error(f"scheduled crawl failed: {e}")
     logger.info("scheduled crawl end")
