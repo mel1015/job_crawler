@@ -70,7 +70,7 @@
     </select>
   </div>
   <button class="btn sm" type="submit">적용</button>
-  <span class="count"><span class="n">{{ jobs|length }}</span> / {{ stats.total }}건</span>
+  <span class="count"><span class="n">{{ filtered_count }}</span> / {{ stats.total }}건</span>
 </form>
 
 {% set has_filter = filters.q or filters.site or filters.status or filters.min_rate %}
@@ -149,4 +149,21 @@
   </div>
 {% endfor %}
 </div>
+
+{% if pagination.total_pages > 1 %}
+{% set qs = '?' + pagination.base_qs + '&' if pagination.base_qs else '?' %}
+<nav class="pagination" style="display:flex; align-items:center; justify-content:center; gap:12px; margin:20px 0;">
+  {% if pagination.page > 1 %}
+    <a class="btn sm" href="{{ qs }}page={{ pagination.page - 1 }}">← 이전</a>
+  {% else %}
+    <span class="btn sm" style="opacity:.4; pointer-events:none;">← 이전</span>
+  {% endif %}
+  <span style="color:var(--fg2); font-variant-numeric:tabular-nums;">{{ pagination.page }} / {{ pagination.total_pages }}</span>
+  {% if pagination.page < pagination.total_pages %}
+    <a class="btn sm" href="{{ qs }}page={{ pagination.page + 1 }}">다음 →</a>
+  {% else %}
+    <span class="btn sm" style="opacity:.4; pointer-events:none;">다음 →</span>
+  {% endif %}
+</nav>
+{% endif %}
 {% endblock %}
