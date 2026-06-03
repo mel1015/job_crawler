@@ -112,7 +112,7 @@ def _upsert_job(detail: JobDetail) -> bool:
             select(Job).where(Job.site == s.site, Job.external_id == s.external_id)
         ).scalar_one_or_none()
         if existing:
-            existing.last_seen_at = datetime.utcnow()
+            existing.last_seen_at = datetime.now(timezone.utc).replace(tzinfo=None)
             existing.title = s.title
             existing.company = s.company
             existing.location = s.location
@@ -167,7 +167,7 @@ async def run(sites: list[str], max_results: int) -> None:
         with session_scope() as session:
             run_row = session.get(CrawlRun, run_id)
             if run_row is not None:
-                run_row.finished_at = datetime.utcnow()
+                run_row.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 run_row.fetched = fetched
                 run_row.new_jobs = new_count
                 run_row.status = status if not errors else ("ok" if status == "ok" else "error")
