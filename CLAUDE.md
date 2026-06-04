@@ -10,6 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - "git 최신화", "커밋해줘", "올려줘" 등 어떤 표현이든 git 작업 전 **현재 브랜치 확인 필수**
 - main 또는 develop이면 **반드시 `git checkout -b feature/<name>` 먼저** 실행
 
+## 문서 동기화 (필수)
+
+기능 추가·버그 픽스 등 코드 수정을 완료하면, 영향받는 md 문서(`CLAUDE.md`의 모델/라우터/마이그레이션/트러블슈팅 등)도 **같은 커밋에 함께 갱신**한다. 사용자가 별도로 "문서 최신화"를 요청하지 않아도 자동으로 수행한다.
+
 ## Commands
 
 ```bash
@@ -80,9 +84,11 @@ pytest tests/test_resume_loader.py  # 단일 파일
 SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 
 모델:
-- `Job`: 공고 본문 (`body_text`, `body_raw`), `is_closed`, `is_applied`, `is_ignored`, `last_seen_at`, `score_result` 관계
-  - `is_applied`: 지원완료 표시 (토글, 기본 목록에 포함)
-  - `is_ignored`: 관심없음 표시 (토글, 기본 목록에서 숨김 — `status=ignored` 필터로만 열람)
+- `Job`: 공고 본문 (`body_text`, `body_raw`), `is_closed`, `is_applied`, `application_status`, `is_ignored`, `last_seen_at`, `score_result` 관계
+  - `is_applied`: 지원완료 표시 (기본 목록에 포함)
+  - `application_status`: 지원 후 전형 단계. `None`=결과대기, `doc_passed`/`doc_rejected`/`interview`/`final_passed`/`final_rejected`. `is_applied=True`일 때만 의미
+  - `is_ignored`: 관심없음 표시 (기본 목록에서 숨김 — `status=ignored` 필터로만 열람)
+  - 위 세 필드는 카드의 전형 상태 드롭다운(`_application_status.html`) 하나로 통합 제어 (컨트롤 분산 시 모순 상태 방지)
 - `ScoreResult`: 합격률 평가 결과 (`match_rate`, `verdict`, `strengths`, `gaps`, `red_flags`, `action_tip`, `model`). `model` 필드로 Gemini/claude-code 구분
 - `CrawlRun`: 실행 이력 (`site`, `fetched`, `new_jobs`, `status`, `errors`)
 
@@ -91,6 +97,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 - `a1b2c3d4e5f6_add_image_urls_to_jobs.py`: `image_urls` JSON 컬럼 추가
 - `b2c3d4e5f6a7_add_is_applied_to_jobs.py`: `is_applied` Boolean 컬럼 추가
 - `c3d4e5f6a7b8_add_is_ignored_to_jobs.py`: `is_ignored` Boolean 컬럼 추가
+- `d4e5f6a7b8c9_add_application_status_to_jobs.py`: `application_status` String 컬럼 추가 (전형 단계)
 
 ### 합격률 평가 (`scoring/`)
 
@@ -122,12 +129,15 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 ### 웹 (`web/`)
 
 FastAPI + Jinja2 + HTMX. 라우터:
-- `routers/jobs.py`: 목록/상세/합격률 평가/재평가/지원완료 토글/관심없음 토글
+- `routers/jobs.py`: 목록/상세/합격률 평가/재평가/전형 상태 변경(`POST /jobs/{id}/application-status`)
 - `routers/runs.py`: 크롤링 이력
+
+> 지원완료·관심없음 토글 버튼(`toggle-applied`/`toggle-ignored` 라우트, `_applied_btn.html`/`_ignored_btn.html`)은 전형 상태 드롭다운으로 통합되며 제거됨. 드롭다운 변경 시 `applyCardStatus()` JS가 카드 색(`st-*` 클래스)을 즉시 갱신하고, hx-post가 DB 저장을 병행.
 
 대시보드 필터 (`status` 파라미터):
 - `scored` / `unscored`: 평가 완료/미평가
 - `applied`: `is_applied=True` 공고
+- `doc_passed`/`doc_rejected`/`interview`/`final_passed`/`final_rejected`: 전형 단계별 공고 (`application_status` 일치)
 - `ignored`: `is_ignored=True` 공고만 표시 (이 외 모든 상태에서는 `is_ignored=False` 공고만 표시)
 
 > **주의**: `is_ignored` 필터링은 DB 쿼리가 아닌 Python 리스트 단계에서 처리. `status=ignored`일 때 ignored=True, 그 외엔 ignored=False 공고만 노출. DB 쿼리에서 `is_ignored==False` 조건을 넣으면 "관심없음 보기"가 영원히 빈 리스트가 됨.
@@ -163,4 +173,6 @@ class MySiteCrawler(BaseCrawler):
 | `alembic upgrade head` 실패 | `mkdir -p data` 먼저 실행 |
 | 대시보드 포트 충돌 (Errno 48) | `lsof -i :8000 -n -P` 로 PID 확인 후 `kill <PID>` |
 | `load_resume()` TypeError | `ResumeProfile` 객체 반환 — 텍스트는 `.raw_text`, 임포트는 `job_crawler.resume.loader` |
-| 관심없음 버튼 클릭해도 DB 저장 안 됨 | onclick에서 `card.remove()` 쓰면 HTMX POST가 취소됨 — `style.display='none'` 사용 |
+| 카드 클릭 시 드롭다운 대신 상세로 이동 | select에 `event.stopPropagation()` 필요. 카드 `onclick`의 `closest()` 제외 대상에 `select` 포함 |
+| 드롭다운 바꿔도 카드 색 즉시 안 변함 | fragment 스왑은 드롭다운만 갱신 → `applyCardStatus()` JS로 `.job-card` 클래스 즉시 변경 |
+| 관심없음 선택해도 기본 목록에서 안 사라짐 | `applyCardStatus()`가 `status≠ignored`일 때 `style.display='none'` 처리 (DB 저장은 hx-post 병행) |
