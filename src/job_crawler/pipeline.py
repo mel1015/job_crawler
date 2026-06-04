@@ -52,22 +52,21 @@ async def crawl_site(site: str, max_results: int) -> tuple[int, int, list[str]]:
         filtered = [s for s in all_summaries if pass_filters(s)]
         logger.info(f"[{site}] passed filter={len(filtered)}/{fetched}")
 
-        new_count = 0
         semaphore = asyncio.Semaphore(settings.crawl_concurrency)
 
-        async def fetch_one(s: JobSummary) -> None:
-            nonlocal new_count
+        async def fetch_one(s: JobSummary) -> JobDetail | None:
             async with semaphore:
                 try:
-                    detail: JobDetail = await crawler.fetch_detail(s)
+                    return await crawler.fetch_detail(s)
                 except Exception as e:  # noqa: BLE001
                     errors.append(f"detail {s.external_id}: {e}")
                     logger.warning(f"[{site}] detail failed {s.external_id}: {e}")
-                    return
-                if _upsert_job(detail):
-                    new_count += 1
+                    return None
 
-        await asyncio.gather(*[fetch_one(s) for s in filtered])
+        # 네트워크 fetch는 병렬로 끝낸 뒤 DB upsert를 분리 — 동기 DB 쓰기가
+        # in-flight fetch_detail을 블로킹하지 않게 함. 건별 세션은 실패 격리 위해 유지.
+        results = await asyncio.gather(*[fetch_one(s) for s in filtered])
+        new_count = sum(1 for detail in results if detail is not None and _upsert_job(detail))
     finally:
         await crawler.aclose()
 
@@ -113,7 +112,7 @@ def _upsert_job(detail: JobDetail) -> bool:
             select(Job).where(Job.site == s.site, Job.external_id == s.external_id)
         ).scalar_one_or_none()
         if existing:
-            existing.last_seen_at = datetime.utcnow()
+            existing.last_seen_at = datetime.now(timezone.utc).replace(tzinfo=None)
             existing.title = s.title
             existing.company = s.company
             existing.location = s.location
@@ -168,7 +167,7 @@ async def run(sites: list[str], max_results: int) -> None:
         with session_scope() as session:
             run_row = session.get(CrawlRun, run_id)
             if run_row is not None:
-                run_row.finished_at = datetime.utcnow()
+                run_row.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 run_row.fetched = fetched
                 run_row.new_jobs = new_count
                 run_row.status = status if not errors else ("ok" if status == "ok" else "error")

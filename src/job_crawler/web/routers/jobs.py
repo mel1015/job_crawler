@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import defer, joinedload
 
 from ...db.models import Job, ScoreResult
 from ...db.session import session_scope
@@ -14,6 +15,8 @@ from ...scoring.matcher import score_job
 from ..templating import templates
 
 router = APIRouter()
+
+PAGE_SIZE = 50
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -24,6 +27,7 @@ def index(
     status: str | None = Query(None, description="scored | unscored | applied | ignored"),
     q: str | None = Query(None),
     sort: str = Query("latest", description="latest | rate"),
+    page: int = Query(1, ge=1),
 ):
     site = site or None
     status = status or None
@@ -34,12 +38,18 @@ def index(
     except ValueError:
         min_rate_val = None
     with session_scope() as session:
+        # 목록·검색 어디서도 body_raw(원본 HTML, 활성 row당 평균 ~25KB)를 쓰지
+        # 않으므로 defer해 매 요청 직렬화 비용 제거. body_text는 q 검색에 필요해 유지.
         all_jobs = list(
             session.execute(
-                select(Job).options(joinedload(Job.score)).where(Job.is_closed == False)  # noqa: E712
+                select(Job)
+                .options(joinedload(Job.score), defer(Job.body_raw))
+                .where(Job.is_closed == False)  # noqa: E712
             ).unique().scalars()
         )
-        now = datetime.now()
+        # first_seen_at/last_seen_at은 SQLite func.now()로 naive UTC 저장 →
+        # 비교 기준 now도 naive UTC로 맞춰 9시간 오차 제거 ("신규" 배지·통계 정확)
+        now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
         week_ago = now - timedelta(days=7)
         day_ago = now - timedelta(days=1)
         stats = {
@@ -88,7 +98,28 @@ def index(
         else:
             jobs.sort(key=lambda j: j.first_seen_at, reverse=True)
 
+        # 필터 적용된 전체 매치 수(페이지 슬라이싱 전) — 카운트 표시·페이지 계산용
+        filtered_count = len(jobs)
+        total_pages = max(1, (filtered_count + PAGE_SIZE - 1) // PAGE_SIZE)
+        page = min(page, total_pages)
+        start = (page - 1) * PAGE_SIZE
+        jobs = jobs[start : start + PAGE_SIZE]
+
         sites = sorted(by_site.keys())
+
+        # 페이지 링크가 현재 필터를 유지하도록 page를 뺀 쿼리스트링 구성
+        base_params = {
+            k: v
+            for k, v in (
+                ("site", site or ""),
+                ("min_rate", min_rate_val if min_rate_val is not None else ""),
+                ("status", status or ""),
+                ("q", q or ""),
+                ("sort", sort),
+            )
+            if v != ""
+        }
+        base_qs = urlencode(base_params)
 
         return templates.TemplateResponse(
             request,
@@ -98,6 +129,12 @@ def index(
                 "sites": sites,
                 "stats": stats,
                 "now": now,
+                "filtered_count": filtered_count,
+                "pagination": {
+                    "page": page,
+                    "total_pages": total_pages,
+                    "base_qs": base_qs,
+                },
                 "filters": {
                     "site": site or "",
                     "min_rate": min_rate_val if min_rate_val is not None else "",
