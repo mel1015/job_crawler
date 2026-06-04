@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from sqlalchemy import select
@@ -17,6 +17,14 @@ from ..templating import templates
 router = APIRouter()
 
 PAGE_SIZE = 50
+
+VALID_APP_STATUSES = {
+    "doc_passed",
+    "doc_rejected",
+    "interview",
+    "final_passed",
+    "final_rejected",
+}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -78,6 +86,8 @@ def index(
                 jobs = [j for j in jobs if not (j.score and j.score.status == "done")]
             elif status == "applied":
                 jobs = [j for j in jobs if j.is_applied]
+            elif status in VALID_APP_STATUSES:
+                jobs = [j for j in jobs if j.application_status == status]
 
         if site:
             jobs = [j for j in jobs if j.site == site]
@@ -207,8 +217,38 @@ def toggle_applied(request: Request, job_id: int):
         if job is None:
             raise HTTPException(404)
         job.is_applied = not job.is_applied
+        # 미지원으로 되돌리면 전형 상태도 초기화 (모순 상태 방지)
+        if not job.is_applied:
+            job.application_status = None
         return templates.TemplateResponse(
             request, "_applied_btn.html", {"job": job}
+        )
+
+
+@router.post("/jobs/{job_id}/application-status", response_class=HTMLResponse)
+def set_application_status(request: Request, job_id: int, status: str = Form("")):
+    with session_scope() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            raise HTTPException(404)
+        # 드롭다운이 is_applied / application_status / is_ignored를 함께 제어 (정합성 보장)
+        if status == "ignored":
+            # 관심없음: is_applied/application_status는 건드리지 않음.
+            # 해제 시엔 드롭다운에서 고른 값으로 갱신됨 (이전 단계 자동 복원은 아님)
+            job.is_ignored = True
+        else:
+            job.is_ignored = False
+            if status == "not_applied":
+                job.is_applied = False
+                job.application_status = None
+            elif status == "applied":
+                job.is_applied = True
+                job.application_status = None
+            elif status in VALID_APP_STATUSES:
+                job.is_applied = True
+                job.application_status = status
+        return templates.TemplateResponse(
+            request, "_application_status.html", {"job": job}
         )
 
 
