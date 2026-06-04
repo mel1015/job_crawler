@@ -210,21 +210,6 @@ def _render_score_fragment(request: Request, job_id: int) -> HTMLResponse:
         return templates.TemplateResponse(request, "_score.html", {"job": job})
 
 
-@router.post("/jobs/{job_id}/toggle-applied", response_class=HTMLResponse)
-def toggle_applied(request: Request, job_id: int):
-    with session_scope() as session:
-        job = session.get(Job, job_id)
-        if job is None:
-            raise HTTPException(404)
-        job.is_applied = not job.is_applied
-        # 미지원으로 되돌리면 전형 상태도 초기화 (모순 상태 방지)
-        if not job.is_applied:
-            job.application_status = None
-        return templates.TemplateResponse(
-            request, "_applied_btn.html", {"job": job}
-        )
-
-
 @router.post("/jobs/{job_id}/application-status", response_class=HTMLResponse)
 def set_application_status(request: Request, job_id: int, status: str = Form("")):
     with session_scope() as session:
@@ -249,16 +234,4 @@ def set_application_status(request: Request, job_id: int, status: str = Form("")
                 job.application_status = status
         return templates.TemplateResponse(
             request, "_application_status.html", {"job": job}
-        )
-
-
-@router.post("/jobs/{job_id}/toggle-ignored", response_class=HTMLResponse)
-def toggle_ignored(request: Request, job_id: int):
-    with session_scope() as session:
-        job = session.get(Job, job_id)
-        if job is None:
-            raise HTTPException(404)
-        job.is_ignored = not job.is_ignored
-        return templates.TemplateResponse(
-            request, "_ignored_btn.html", {"job": job}
         )
