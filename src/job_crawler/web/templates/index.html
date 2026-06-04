@@ -55,6 +55,11 @@
       <option value="scored" {% if filters.status == 'scored' %}selected{% endif %}>평가완료</option>
       <option value="unscored" {% if filters.status == 'unscored' %}selected{% endif %}>미평가</option>
       <option value="applied" {% if filters.status == 'applied' %}selected{% endif %}>지원완료</option>
+      <option value="doc_passed" {% if filters.status == 'doc_passed' %}selected{% endif %}>　서류합격</option>
+      <option value="doc_rejected" {% if filters.status == 'doc_rejected' %}selected{% endif %}>　서류탈락</option>
+      <option value="interview" {% if filters.status == 'interview' %}selected{% endif %}>　면접</option>
+      <option value="final_passed" {% if filters.status == 'final_passed' %}selected{% endif %}>　최종합격</option>
+      <option value="final_rejected" {% if filters.status == 'final_rejected' %}selected{% endif %}>　최종탈락</option>
       <option value="ignored" {% if filters.status == 'ignored' %}selected{% endif %}>관심없음</option>
     </select>
   </div>
@@ -79,7 +84,8 @@
   <span class="af-label">적용된 필터:</span>
   {% if filters.q %}<span class="af-chip">검색: {{ filters.q }}</span>{% endif %}
   {% if filters.site %}<span class="af-chip">{{ filters.site | upper }}</span>{% endif %}
-  {% if filters.status %}<span class="af-chip">{{ '평가완료' if filters.status == 'scored' else ('미평가' if filters.status == 'unscored' else ('지원완료' if filters.status == 'applied' else '관심없음')) }}</span>{% endif %}
+  {% set status_labels = {'scored': '평가완료', 'unscored': '미평가', 'applied': '지원완료', 'doc_passed': '서류합격', 'doc_rejected': '서류탈락', 'interview': '면접', 'final_passed': '최종합격', 'final_rejected': '최종탈락', 'ignored': '관심없음'} %}
+  {% if filters.status %}<span class="af-chip">{{ status_labels.get(filters.status, filters.status) }}</span>{% endif %}
   {% if filters.min_rate %}<span class="af-chip">합격률 ≥ {{ filters.min_rate }}%</span>{% endif %}
   <a href="/" class="af-reset">전체 초기화</a>
 </div>
@@ -89,8 +95,8 @@
 {% for j in jobs %}
   {% set pos = extract_position(j.title) %}
   {% set is_new = j.first_seen_at and (now - j.first_seen_at).total_seconds() < 86400 %}
-  <div class="job-card {% if j.is_applied %}is-applied{% endif %}"
-       onclick="if(!event.target.closest('button,a,.score-pill,.spinner,.expand-btn'))location.href='/jobs/{{ j.id }}'" style="cursor:pointer;">
+  <div class="job-card {% if j.is_ignored %}st-ignored{% elif j.application_status %}st-{{ j.application_status }}{% elif j.is_applied %}st-applied{% endif %}"
+       onclick="if(!event.target.closest('button,a,select,.score-pill,.spinner,.expand-btn'))location.href='/jobs/{{ j.id }}'" style="cursor:pointer;">
     <div class="top-row">
       <div class="main-info">
         <div class="title-line">
@@ -127,8 +133,7 @@
         {% endif %}
       </div>
       <div class="score-area">
-        {% with job=j %}{% include '_ignored_btn.html' %}{% endwith %}
-        {% with job=j %}{% include '_applied_btn.html' %}{% endwith %}
+        {% with job=j %}{% include '_application_status.html' %}{% endwith %}
         {% with job=j %}{% include '_score.html' %}{% endwith %}
       </div>
     </div>
@@ -152,17 +157,32 @@
 
 {% if pagination.total_pages > 1 %}
 {% set qs = '?' + pagination.base_qs + '&' if pagination.base_qs else '?' %}
-<nav class="pagination" style="display:flex; align-items:center; justify-content:center; gap:12px; margin:20px 0;">
+{% set win = 4 %}
+{% set start = [pagination.page - win, 1] | max %}
+{% set end = [pagination.page + win, pagination.total_pages] | min %}
+<nav class="pagination">
   {% if pagination.page > 1 %}
-    <a class="btn sm" href="{{ qs }}page={{ pagination.page - 1 }}">← 이전</a>
+    <a class="pg pg-edge" href="{{ qs }}page=1">맨 앞으로</a>
+    <a class="pg pg-arrow" href="{{ qs }}page={{ pagination.page - 1 }}">‹ 이전</a>
   {% else %}
-    <span class="btn sm" style="opacity:.4; pointer-events:none;">← 이전</span>
+    <span class="pg pg-edge disabled">맨 앞으로</span>
+    <span class="pg pg-arrow disabled">‹ 이전</span>
   {% endif %}
-  <span style="color:var(--fg2); font-variant-numeric:tabular-nums;">{{ pagination.page }} / {{ pagination.total_pages }}</span>
+  {% if start > 1 %}<span class="dots">…</span>{% endif %}
+  {% for p in range(start, end + 1) %}
+    {% if p == pagination.page %}
+      <span class="pg pg-num active">{{ p }}</span>
+    {% else %}
+      <a class="pg pg-num" href="{{ qs }}page={{ p }}">{{ p }}</a>
+    {% endif %}
+  {% endfor %}
+  {% if end < pagination.total_pages %}<span class="dots">…</span>{% endif %}
   {% if pagination.page < pagination.total_pages %}
-    <a class="btn sm" href="{{ qs }}page={{ pagination.page + 1 }}">다음 →</a>
+    <a class="pg pg-arrow" href="{{ qs }}page={{ pagination.page + 1 }}">다음 ›</a>
+    <a class="pg pg-edge" href="{{ qs }}page={{ pagination.total_pages }}">맨 뒤로</a>
   {% else %}
-    <span class="btn sm" style="opacity:.4; pointer-events:none;">다음 →</span>
+    <span class="pg pg-arrow disabled">다음 ›</span>
+    <span class="pg pg-edge disabled">맨 뒤로</span>
   {% endif %}
 </nav>
 {% endif %}
