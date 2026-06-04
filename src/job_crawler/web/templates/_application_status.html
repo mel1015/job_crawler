@@ -1,0 +1,19 @@
+<span id="appstatus-{{ job.id }}">
+  <select class="btn sm appstatus-select"
+          hx-post="/jobs/{{ job.id }}/application-status"
+          hx-target="#appstatus-{{ job.id }}"
+          hx-swap="outerHTML"
+          name="status"
+          onclick="event.stopPropagation();"
+          onchange="event.stopPropagation(); applyCardStatus(this);"
+          title="전형 진행 상태">
+    <option value="not_applied" {% if not job.is_applied and not job.is_ignored %}selected{% endif %}>미지원</option>
+    <option value="applied" {% if job.is_applied and not job.application_status and not job.is_ignored %}selected{% endif %}>지원·결과대기</option>
+    <option value="doc_passed" {% if job.application_status == 'doc_passed' and not job.is_ignored %}selected{% endif %}>서류합격</option>
+    <option value="doc_rejected" {% if job.application_status == 'doc_rejected' and not job.is_ignored %}selected{% endif %}>서류탈락</option>
+    <option value="interview" {% if job.application_status == 'interview' and not job.is_ignored %}selected{% endif %}>면접</option>
+    <option value="final_passed" {% if job.application_status == 'final_passed' and not job.is_ignored %}selected{% endif %}>최종합격</option>
+    <option value="final_rejected" {% if job.application_status == 'final_rejected' and not job.is_ignored %}selected{% endif %}>최종탈락</option>
+    <option value="ignored" {% if job.is_ignored %}selected{% endif %}>관심없음</option>
+  </select>
+</span>

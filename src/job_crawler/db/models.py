@@ -43,6 +43,9 @@ class Job(Base):
     image_urls: Mapped[list[str] | None] = mapped_column(JSON)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_applied: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 지원 후 전형 진행 단계. None=결과대기. is_applied=True일 때만 의미 있음.
+    # doc_passed|doc_rejected|interview|final_passed|final_rejected
+    application_status: Mapped[str | None] = mapped_column(String(16))
     is_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
