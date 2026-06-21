@@ -10,9 +10,6 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
-
     resume_path: Path = Path("resume.md")
 
     desired_roles: str = ""
