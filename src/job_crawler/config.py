@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     desired_positions: str = ""   # 직군 화이트리스트 (빈값=전체 허용)
     blacklist_companies: str = "" # 기업명 블랙리스트
     required_keywords: str = ""   # 제목 필수 키워드 (빈값=DEV_KEYWORDS 사용)
+    it_company_whitelist: str = "" # catch 다부문 공채 허용할 IT 기업명 (쉼표 구분)
 
     database_url: str = "sqlite:///./data/jobs.db"
 
@@ -38,6 +39,10 @@ class Settings(BaseSettings):
     )
 
     log_level: str = "INFO"
+
+    @property
+    def it_company_whitelist_list(self) -> list[str]:
+        return [s.strip() for s in self.it_company_whitelist.split(",") if s.strip()]
 
     @property
     def roles_list(self) -> list[str]:
