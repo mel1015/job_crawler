@@ -89,7 +89,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
   - `application_status`: 지원 후 전형 단계. `None`=결과대기, `doc_passed`/`doc_rejected`/`interview`/`final_passed`/`final_rejected`. `is_applied=True`일 때만 의미
   - `is_ignored`: 관심없음 표시 (기본 목록에서 숨김 — `status=ignored` 필터로만 열람)
   - 위 세 필드는 카드의 전형 상태 드롭다운(`_application_status.html`) 하나로 통합 제어 (컨트롤 분산 시 모순 상태 방지)
-- `ScoreResult`: 합격률 평가 결과 (`match_rate`, `verdict`, `strengths`, `gaps`, `red_flags`, `action_tip`, `model`). `model` 필드로 Gemini/claude-code 구분
+- `ScoreResult`: 합격률 평가 결과 (`match_rate`, `verdict`, `strengths`, `gaps`, `red_flags`, `action_tip`, `model`). `model='claude-code'` 고정
 - `CrawlRun`: 실행 이력 (`site`, `fetched`, `new_jobs`, `status`, `errors`)
 
 마이그레이션 이력:
@@ -101,15 +101,12 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 
 ### 합격률 평가 (`scoring/`)
 
-**Gemini 온디맨드**: 자동 호출 금지. 대시보드 버튼(`POST /jobs/{id}/score`)으로만 트리거.
-- `matcher.py`: `status=scoring` 락으로 중복 호출 방지
-- `gemini_client.py`: `response_schema` 기반 JSON 강제 출력
-
-**Claude Code 배치 스코어링** (`scoring/claude_batch.py`): Gemini API 비용 없이 Claude Code 세션 자체를 분석 엔진으로 활용.
+**Claude Code 배치 스코어링만 사용** (`scoring/claude_batch.py`). Gemini는 제거됨.
 - `get_unscored_jobs(limit, days)`: `ScoreResult IS NULL` 또는 `model != 'claude-code'`인 공고 조회
-- `save_claude_scores(scores)`: `model='claude-code'`로 upsert, Gemini 점수도 덮어씀
+- `save_claude_scores(scores)`: `model='claude-code'`로 upsert
 - 스코어 포맷: `{"job_id", "match_rate", "verdict", "strengths", "gaps", "red_flags", "action_tip"}`
 - verdict 기준: 강한매치(80+) / 적합(60-79) / 애매(45-59) / 부적합(~44)
+- 대시보드 평가 버튼 없음 — 모든 스코어링은 Claude Code 세션에서 수행
 
 **Claude 분석 흐름**:
 1. `jc-analyze --days 7` → 미평가 건수 확인
@@ -119,8 +116,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 
 **이미지 공고 처리** (`is_image_only=True`인 공고):
 > **주의**: 이 기능 도입 전 수집된 catch 이미지 공고는 `image_urls=NULL` 상태. 머지 후 `jc-crawl --site catch` 1회 재실행하면 `_upsert_job`의 기존 공고 업데이트 경로에서 `image_urls`가 채워짐.
-- Gemini 온디맨드: `verdict=평가불가`, `match_rate=NULL` 로 저장 (LLM 호출 없음)
-- Claude Code 배치: `image_urls` 필드에 이미지 URL 목록 포함. 이미지 공고 스코어링 절차:
+- `image_urls` 필드에 이미지 URL 목록 포함. 이미지 공고 스코어링 절차:
   1. `job["is_image_only"] == True` 확인
   2. `job["image_urls"]` 의 각 URL을 Bash로 `/tmp/` 에 다운로드: `curl -sL <url> -o /tmp/img_<job_id>_N.jpg`
   3. `Read` 툴로 이미지 파일 시각적 분석
@@ -129,7 +125,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 ### 웹 (`web/`)
 
 FastAPI + Jinja2 + HTMX. 라우터:
-- `routers/jobs.py`: 목록/상세/합격률 평가/재평가/전형 상태 변경(`POST /jobs/{id}/application-status`)
+- `routers/jobs.py`: 목록/상세/분석 조회/전형 상태 변경(`POST /jobs/{id}/application-status`)
 - `routers/runs.py`: 크롤링 이력
 
 > 지원완료·관심없음 토글 버튼(`toggle-applied`/`toggle-ignored` 라우트, `_applied_btn.html`/`_ignored_btn.html`)은 전형 상태 드롭다운으로 통합되며 제거됨. 드롭다운 변경 시 `applyCardStatus()` JS가 카드 색(`st-*` 클래스)을 즉시 갱신하고, hx-post가 DB 저장을 병행.
@@ -145,7 +141,7 @@ FastAPI + Jinja2 + HTMX. 라우터:
 ### 설정 (`config.py`)
 
 `pydantic-settings` 기반, `.env` 파일 로드. `get_settings()` 로 싱글톤 접근.
-주요 설정: `DESIRED_ROLES`, `DESIRED_REGIONS`, `DESIRED_POSITIONS`, `BLACKLIST_COMPANIES`, `REQUIRED_KEYWORDS`, `CRAWL_CONCURRENCY`, `GEMINI_API_KEY`, `RESUME_PATH`
+주요 설정: `DESIRED_ROLES`, `DESIRED_REGIONS`, `DESIRED_POSITIONS`, `BLACKLIST_COMPANIES`, `REQUIRED_KEYWORDS`, `CRAWL_CONCURRENCY`, `RESUME_PATH`
 
 ## 새 사이트 추가 패턴
 
@@ -166,8 +162,7 @@ class MySiteCrawler(BaseCrawler):
 |------|------|
 | saramin 타임아웃 | `.env`의 `REQUEST_DELAY_SEC` 증가 (예: 5) |
 | jobkorea 결과 0건 | `crawlers/jobkorea.py:_parse_list` CSS 셀렉터 확인 |
-| catch body_text 이미지 공고 placeholder | 이미지 공고 — `verdict=평가불가`로 분기됨. 크롤 재실행 시 `image_urls` 컬럼에 URL 저장 |
-| 합격률 평가 500 에러 | `.env`의 `GEMINI_API_KEY` 확인 |
+| catch body_text 이미지 공고 placeholder | 이미지 공고 — Claude Code 세션에서 이미지 다운로드 후 시각 분석 |
 | `jc-crawl` 명령 없음 | `pip install -e .`가 아닌 `source .venv/bin/activate` 먼저 확인 |
 | `save_claude_scores` ModuleNotFoundError | 스크립트에 `sys.path.insert(0, "<repo root>/src")` 추가 |
 | `alembic upgrade head` 실패 | `mkdir -p data` 먼저 실행 |
