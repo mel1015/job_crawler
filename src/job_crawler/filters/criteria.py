@@ -18,6 +18,9 @@ BLACKLIST_KEYWORDS = [
     "간호", "요양", "돌봄",
     "설계사 모집", "GA ", "GFC",
     "무료DB", "DB제공",
+    # SW 개발이지만 직무 불일치 (임베디드/하드웨어)
+    "임베디드", "펌웨어", "firmware", "embedded",
+    "f/w 개발", "h/w 개발", "hw 개발", "fw 개발",
 ]
 
 DEV_KEYWORDS = [
@@ -66,10 +69,6 @@ def pass_filters(summary: JobSummary) -> bool:
     for bad_co in settings.blacklist_companies_list:
         if bad_co.lower() in company:
             return False
-
-    # catch는 _is_it_job에서 IT 직군 1차 필터링 완료
-    if summary.site == "catch":
-        return _check_position(title, settings)
 
     required = settings.required_keywords_list or DEV_KEYWORDS
     if not any(kw.lower() in title for kw in required):
