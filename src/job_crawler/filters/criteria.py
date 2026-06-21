@@ -70,6 +70,13 @@ def pass_filters(summary: JobSummary) -> bool:
         if bad_co.lower() in company:
             return False
 
+    # catch: 화이트리스트 IT 기업은 제목 키워드 없이도 통과 (다부문 공채 대응)
+    if summary.site == "catch":
+        company = (summary.company or "").lower()
+        whitelist = [w.lower() for w in settings.it_company_whitelist_list]
+        if whitelist and any(w in company for w in whitelist):
+            return _check_position(title, settings)
+
     required = settings.required_keywords_list or DEV_KEYWORDS
     if not any(kw.lower() in title for kw in required):
         return False
