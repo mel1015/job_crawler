@@ -11,7 +11,6 @@ from sqlalchemy.orm import defer, joinedload
 
 from ...db.models import Job, ScoreResult
 from ...db.session import session_scope
-from ...scoring.matcher import score_job
 from ..templating import templates
 
 router = APIRouter()
@@ -167,17 +166,6 @@ def job_detail(request: Request, job_id: int):
         return templates.TemplateResponse(request, "detail.html", {"job": job})
 
 
-@router.post("/jobs/{job_id}/score", response_class=HTMLResponse)
-def post_score(request: Request, job_id: int):
-    try:
-        score_job(job_id, force=False)
-    except RuntimeError as e:
-        logger.warning(f"score conflict: {e}")
-    except Exception as e:  # noqa: BLE001
-        logger.opt(exception=e).error(f"score failed job={job_id}")
-    return _render_score_fragment(request, job_id)
-
-
 @router.get("/jobs/{job_id}/analysis", response_class=HTMLResponse)
 def get_analysis(request: Request, job_id: int):
     with session_scope() as session:
@@ -189,25 +177,6 @@ def get_analysis(request: Request, job_id: int):
         return templates.TemplateResponse(
             request, "_analysis.html", {"job": job}
         )
-
-
-@router.post("/jobs/{job_id}/rescore", response_class=HTMLResponse)
-def post_rescore(request: Request, job_id: int):
-    try:
-        score_job(job_id, force=True)
-    except Exception as e:  # noqa: BLE001
-        logger.opt(exception=e).error(f"rescore failed job={job_id}")
-    return _render_score_fragment(request, job_id)
-
-
-def _render_score_fragment(request: Request, job_id: int) -> HTMLResponse:
-    with session_scope() as session:
-        job = session.execute(
-            select(Job).options(joinedload(Job.score)).where(Job.id == job_id)
-        ).unique().scalar_one_or_none()
-        if job is None:
-            raise HTTPException(404)
-        return templates.TemplateResponse(request, "_score.html", {"job": job})
 
 
 @router.post("/jobs/{job_id}/application-status", response_class=HTMLResponse)
