@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+_KST = timezone(timedelta(hours=9))
 
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
@@ -13,6 +15,7 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 templates.env.globals["extract_position"] = extract_position
 templates.env.filters["fmt_body"] = lambda text: Markup(format_body_html(text or ""))
+templates.env.filters["kst"] = lambda dt: dt.replace(tzinfo=timezone.utc).astimezone(_KST) if dt else dt
 
 
 _ALWAYS_HIRING = ("상시채용", "상시모집", "상시 모집")

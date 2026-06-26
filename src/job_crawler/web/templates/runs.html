@@ -119,7 +119,7 @@
       {% for r in runs %}
       {% set dur = ((r.finished_at - r.started_at).total_seconds() | int) if r.finished_at else None %}
       <tr>
-        <td class="muted num">{{ r.started_at.strftime('%m-%d %H:%M') }}</td>
+        <td class="muted num">{{ (r.started_at | kst).strftime('%m-%d %H:%M') }}</td>
         <td><span class="badge site-{{ r.site }}">{{ r.site }}</span></td>
         <td class="muted num">{% if dur is not none %}{{ dur }}초{% else %}-{% endif %}</td>
         <td class="num">{{ r.fetched }}</td>
