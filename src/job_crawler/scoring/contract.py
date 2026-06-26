@@ -36,13 +36,13 @@ SCORE_SCHEMA = """\
 
 
 def validate_score(s: dict) -> dict:
-    """스코어 dict의 list 필드 타입을 강제 보정 (str → [str], None → [])."""
+    """스코어 dict의 list 필드 타입을 보정한 새 dict 반환 (str → [str], None → [])."""
+    out = dict(s)
     for field in SCORE_FIELDS:
-        val = s.get(field)
-        if isinstance(val, list):
-            continue
-        s[field] = [val] if isinstance(val, str) and val else []
-    return s
+        val = out.get(field)
+        if not isinstance(val, list):
+            out[field] = [val] if isinstance(val, str) and val else []
+    return out
 
 
 # ── 분석 프롬프트 ─────────────────────────────────────────────────────────────
