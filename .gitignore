@@ -16,3 +16,4 @@ dist/
 build/
 .playwright/
 logs/
+_*
