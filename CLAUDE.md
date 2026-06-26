@@ -103,24 +103,24 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 
 **Claude Code 배치 스코어링만 사용** (`scoring/claude_batch.py`). Gemini는 제거됨.
 - `get_unscored_jobs(limit, days)`: `ScoreResult IS NULL` 또는 `model != 'claude-code'`인 공고 조회
-- `save_claude_scores(scores)`: `model='claude-code'`로 upsert
-- 스코어 포맷: `{"job_id", "match_rate", "verdict", "strengths", "gaps", "red_flags", "action_tip"}`
-- verdict 기준: 강한매치(80+) / 적합(60-79) / 애매(45-59) / 부적합(~44)
+- `save_claude_scores(scores)`: `model='claude-code'`로 upsert. 저장 전 `validate_score()`로 타입 보정
 - 대시보드 평가 버튼 없음 — 모든 스코어링은 Claude Code 세션에서 수행
+
+> **스코어 포맷·verdict 기준·분석 프롬프트의 단일 출처: `scoring/contract.py`**
+> `verdict_for_rate()`, `SCORE_SCHEMA`, `build_analysis_prompt()` 참조.
 
 **Claude 분석 흐름**:
 1. `jc-analyze --days 7` → 미평가 건수 확인
-2. Claude Code에서 "새 공고 분석해줘" 요청
+2. `jc-scheduler` 또는 직접 `claude -p "$(python -c 'from job_crawler.scoring.contract import build_analysis_prompt; print(build_analysis_prompt(7,50))')"` 실행
 3. `get_unscored_jobs()` 조회 → 이력서 비교 → `save_claude_scores()` 저장
 4. 대시보드 `?sort=rate` 로 합격률 순 정렬 확인
 
 **이미지 공고 처리** (`is_image_only=True`인 공고):
-> **주의**: 이 기능 도입 전 수집된 catch 이미지 공고는 `image_urls=NULL` 상태. 머지 후 `jc-crawl --site catch` 1회 재실행하면 `_upsert_job`의 기존 공고 업데이트 경로에서 `image_urls`가 채워짐.
 - `image_urls` 필드에 이미지 URL 목록 포함. 이미지 공고 스코어링 절차:
   1. `job["is_image_only"] == True` 확인
   2. `job["image_urls"]` 의 각 URL을 Bash로 `/tmp/` 에 다운로드: `curl -sL <url> -o /tmp/img_<job_id>_N.jpg`
   3. `Read` 툴로 이미지 파일 시각적 분석
-  4. 분석 결과로 일반 공고와 동일한 스코어 포맷 산출 후 `save_claude_scores()` 저장
+  4. 분석 결과로 `contract.py`의 스키마와 동일하게 `save_claude_scores()` 저장
 
 ### 웹 (`web/`)
 

@@ -18,19 +18,9 @@ from sqlalchemy import and_, func, or_, select
 from ..crawlers.base import IMAGE_ONLY_PLACEHOLDER
 from ..db.models import Job, ScoreResult
 from ..db.session import session_scope
+from .contract import validate_score, verdict_for_rate
 
 logger = logging.getLogger(__name__)
-
-
-def _verdict_for_rate(rate: int) -> str:
-    """match_rate 경계로 verdict 산출 (강한매치 80+ / 적합 60-79 / 애매 45-59 / 부적합 ~44)."""
-    if rate >= 80:
-        return "강한매치"
-    if rate >= 60:
-        return "적합"
-    if rate >= 45:
-        return "애매"
-    return "부적합"
 
 
 def _is_image_only(body_text: str | None) -> bool:
@@ -126,6 +116,7 @@ def save_claude_scores(scores: list[dict]) -> int:
     """
     count = 0
     for s in scores:
+        s = validate_score(s)
         job_id = s["job_id"]
         raw_rate = s.get("match_rate")
         if s.get("verdict") == "평가불가" or raw_rate is None:
@@ -133,7 +124,7 @@ def save_claude_scores(scores: list[dict]) -> int:
             verdict = "평가불가"
         else:
             match_rate = int(raw_rate)
-            verdict = _verdict_for_rate(match_rate)
+            verdict = verdict_for_rate(match_rate)
             if s.get("verdict") and s["verdict"] != verdict:
                 logger.warning(
                     "job %s: verdict '%s'가 match_rate %d 경계와 불일치 → '%s'로 보정",
@@ -151,9 +142,9 @@ def save_claude_scores(scores: list[dict]) -> int:
                         status="done",
                         match_rate=match_rate,
                         verdict=verdict,
-                        strengths=s.get("strengths") or [],
-                        gaps=s.get("gaps") or [],
-                        red_flags=s.get("red_flags") or [],
+                        strengths=s["strengths"],
+                        gaps=s["gaps"],
+                        red_flags=s["red_flags"],
                         action_tip=s.get("action_tip"),
                         model="claude-code",
                         scored_at=now,
@@ -163,9 +154,9 @@ def save_claude_scores(scores: list[dict]) -> int:
                 existing.status = "done"
                 existing.match_rate = match_rate
                 existing.verdict = verdict
-                existing.strengths = s.get("strengths") or []
-                existing.gaps = s.get("gaps") or []
-                existing.red_flags = s.get("red_flags") or []
+                existing.strengths = s["strengths"]
+                existing.gaps = s["gaps"]
+                existing.red_flags = s["red_flags"]
                 existing.action_tip = s.get("action_tip")
                 existing.model = "claude-code"
                 existing.error = None
