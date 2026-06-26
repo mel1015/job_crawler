@@ -59,7 +59,7 @@ pytest tests/test_resume_loader.py  # 단일 파일
 2. `pass_filters()` 로 블랙리스트/직군/필수키워드 필터링
 3. `asyncio.gather` + `Semaphore(CRAWL_CONCURRENCY)` 로 병렬 `crawler.fetch_detail()`
 4. SQLite upsert (`_upsert_job`) + `CrawlRun` 이력 기록
-5. `_mark_closed_jobs`: deadline_at 경과 또는 14일 미갱신 공고 → `is_closed=True`
+5. `_mark_closed_jobs`: deadline_at 경과 또는 7일 미갱신 공고 → `is_closed=True`
 
 ### 크롤러 (`crawlers/`)
 

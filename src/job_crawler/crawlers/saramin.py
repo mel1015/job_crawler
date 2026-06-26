@@ -158,17 +158,35 @@ class SaraminCrawler(BaseCrawler):
             deadline_at=self._extract_deadline(soup),
         )
 
+    _DEADLINE_FORMATS = ("%Y.%m.%d %H:%M", "%Y.%m.%d")
+    _DEADLINE_RE = re.compile(r"(\d{4})[.\-/](\d{2})[.\-/](\d{2})")
+
     def _extract_deadline(self, soup: BeautifulSoup) -> datetime | None:
+        # 1) dt.end → dd 구조 (기존)
         dt_end = soup.select_one("dt.end")
-        if not dt_end:
-            return None
-        dd = dt_end.find_next_sibling("dd")
-        if not dd:
-            return None
-        try:
-            return datetime.strptime(dd.get_text(strip=True), "%Y.%m.%d %H:%M")
-        except ValueError:
-            return None
+        if dt_end:
+            dd = dt_end.find_next_sibling("dd")
+            if dd:
+                text = dd.get_text(strip=True)
+                for fmt in self._DEADLINE_FORMATS:
+                    try:
+                        return datetime.strptime(text, fmt)
+                    except ValueError:
+                        pass
+
+        # 2) 접수기간 텍스트 블록에서 마감 날짜 추출
+        for el in soup.select("dt, th, strong, span.tit"):
+            if "마감" in el.get_text() or "접수기간" in el.get_text():
+                sibling = el.find_next_sibling() or el.parent
+                if sibling:
+                    text = sibling.get_text(" ", strip=True)
+                    m = self._DEADLINE_RE.search(text)
+                    if m:
+                        try:
+                            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                        except ValueError:
+                            pass
+        return None
 
     def _extract_body(self, soup: BeautifulSoup) -> str:
         content_keywords = ("주요업무", "자격요건", "모집분야", "담당업무", "지원자격", "우대사항")
