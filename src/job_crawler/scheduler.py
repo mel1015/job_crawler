@@ -15,6 +15,7 @@ from .crawlers.registry import ACTIVE_SITES
 from .logging_setup import setup_logging
 from .pipeline import run as run_pipeline
 from .scoring.claude_batch import count_unscored_jobs
+from .scoring.contract import build_analysis_prompt
 
 # 리포지토리 루트 (이 파일 기준 4단계 상위)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -35,7 +36,7 @@ def _run_analysis() -> None:
     logger.info(f"auto-analysis: 미평가 {unscored}건 → claude -p 실행")
     try:
         result = subprocess.run(
-            [claude_bin, "-p", f"새 공고 분석해줘 --days 1 --limit {min(unscored, 50)}"],
+            [claude_bin, "-p", build_analysis_prompt(days=1, limit=min(unscored, 50))],
             cwd=str(_REPO_ROOT),
             timeout=600,  # 최대 10분
             capture_output=True,
@@ -49,6 +50,9 @@ def _run_analysis() -> None:
         logger.warning("auto-analysis: 타임아웃 (600s)")
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=e).error("auto-analysis: 실행 실패")
+    finally:
+        for f in _REPO_ROOT.glob("_*"):
+            f.unlink(missing_ok=True)
 
 
 async def _job(limit: int = 30) -> None:
@@ -66,7 +70,7 @@ async def _job(limit: int = 30) -> None:
 
 async def _main_async() -> None:
     scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
-    scheduler.add_job(_job, CronTrigger(hour="9,19", minute=0), id="daily_crawl")
+    scheduler.add_job(_job, CronTrigger(hour="9,19", minute=0), id="daily_crawl", misfire_grace_time=300)
     scheduler.start()
     logger.info("scheduler started (09:00, 19:00 KST)")
 
