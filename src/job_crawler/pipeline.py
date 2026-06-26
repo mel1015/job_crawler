@@ -111,6 +111,22 @@ def _upsert_job(detail: JobDetail) -> bool:
         existing = session.execute(
             select(Job).where(Job.site == s.site, Job.external_id == s.external_id)
         ).scalar_one_or_none()
+
+        # saramin 등 일부 사이트는 동일 공고를 주기적으로 새 external_id로 재등록함.
+        # external_id 미매칭 시 (site, company, title) 기준으로 열린 공고 재사용.
+        if not existing:
+            existing = session.execute(
+                select(Job).where(
+                    Job.site == s.site,
+                    Job.company == s.company,
+                    Job.title == s.title,
+                    Job.is_closed == False,  # noqa: E712
+                )
+            ).scalar_one_or_none()
+            if existing:
+                existing.external_id = s.external_id
+                existing.url = s.url
+
         if existing:
             existing.last_seen_at = datetime.now(timezone.utc).replace(tzinfo=None)
             existing.title = s.title
