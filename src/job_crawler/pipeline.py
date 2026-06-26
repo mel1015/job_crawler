@@ -79,13 +79,13 @@ def _mark_closed_jobs(site: str) -> int:
 
     두 조건 중 하나를 충족하면 마감 처리:
     - deadline_at이 설정됐고 now를 지난 경우 (마감일 경과)
-    - deadline_at이 없고 last_seen_at이 14일 이상 갱신되지 않은 경우
+    - deadline_at이 없고 last_seen_at이 7일 이상 갱신되지 않은 경우
       (마감일 정보가 없는 사이트에서 limit 제한 등으로 누락 시 false positive 방지)
 
     deadline_at이 미래로 설정된 공고는 last_seen_at 조건으로는 닫지 않는다.
     """
     now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
-    threshold = now - timedelta(days=14)
+    threshold = now - timedelta(days=7)
     with session_scope() as session:
         result = session.execute(
             update(Job)
