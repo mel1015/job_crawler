@@ -59,7 +59,7 @@ pytest tests/test_resume_loader.py  # 단일 파일
 2. `pass_filters()` 로 블랙리스트/직군/필수키워드 필터링
 3. `asyncio.gather` + `Semaphore(CRAWL_CONCURRENCY)` 로 병렬 `crawler.fetch_detail()`
 4. SQLite upsert (`_upsert_job`) + `CrawlRun` 이력 기록
-5. `_mark_closed_jobs`: deadline_at 경과 또는 7일 미갱신 공고 → `is_closed=True`
+5. `_mark_closed_jobs`: deadline_at 경과 또는 7일 미갱신 공고 → `is_closed=True` (`is_applied=True` 공고는 제외)
 
 ### 크롤러 (`crawlers/`)
 
@@ -132,9 +132,11 @@ FastAPI + Jinja2 + HTMX. 라우터:
 
 대시보드 필터 (`status` 파라미터):
 - `scored` / `unscored`: 평가 완료/미평가
-- `applied`: `is_applied=True` 공고
-- `doc_passed`/`doc_rejected`/`interview`/`final_passed`/`final_rejected`: 전형 단계별 공고 (`application_status` 일치)
+- `applied`: `is_applied=True` 공고 (마감 여부 무관 — `is_closed` 무시)
+- `doc_passed`/`doc_rejected`/`interview`/`final_passed`/`final_rejected`: 전형 단계별 공고 (`application_status` 일치, 마감 여부 무관)
 - `ignored`: `is_ignored=True` 공고만 표시 (이 외 모든 상태에서는 `is_ignored=False` 공고만 표시)
+
+> **주의**: `applied`/전형 상태 필터에서는 `is_applied=True` 공고를 별도 쿼리로 조회 (`is_closed` 무시). stats 카운터는 항상 `is_closed=False` 기준으로 산출.
 
 > **주의**: `is_ignored` 필터링은 DB 쿼리가 아닌 Python 리스트 단계에서 처리. `status=ignored`일 때 ignored=True, 그 외엔 ignored=False 공고만 노출. DB 쿼리에서 `is_ignored==False` 조건을 넣으면 "관심없음 보기"가 영원히 빈 리스트가 됨.
 

@@ -92,6 +92,7 @@ def _mark_closed_jobs(site: str) -> int:
             .where(
                 Job.site == site,
                 Job.is_closed == False,  # noqa: E712
+                Job.is_applied == False,  # noqa: E712  지원 이력 공고는 자동 마감 제외
                 or_(
                     and_(Job.deadline_at.isnot(None), Job.deadline_at < now),
                     and_(Job.deadline_at.is_(None), Job.last_seen_at < threshold),
