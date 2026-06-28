@@ -47,7 +47,7 @@ def index(
     with session_scope() as session:
         # 목록·검색 어디서도 body_raw(원본 HTML, 활성 row당 평균 ~25KB)를 쓰지
         # 않으므로 defer해 매 요청 직렬화 비용 제거. body_text는 q 검색에 필요해 유지.
-        all_jobs = list(
+        open_jobs = list(
             session.execute(
                 select(Job)
                 .options(joinedload(Job.score), defer(Job.body_raw))
@@ -60,20 +60,32 @@ def index(
         week_ago = now - timedelta(days=7)
         day_ago = now - timedelta(days=1)
         stats = {
-            "total": len(all_jobs),
-            "scored": sum(1 for j in all_jobs if j.score and j.score.status == "done"),
+            "total": len(open_jobs),
+            "scored": sum(1 for j in open_jobs if j.score and j.score.status == "done"),
             "high": sum(
                 1
-                for j in all_jobs
+                for j in open_jobs
                 if j.score and j.score.status == "done" and (j.score.match_rate or 0) >= 75
             ),
-            "recent_week": sum(1 for j in all_jobs if j.first_seen_at and j.first_seen_at >= week_ago),
-            "recent_day": sum(1 for j in all_jobs if j.first_seen_at and j.first_seen_at >= day_ago),
+            "recent_week": sum(1 for j in open_jobs if j.first_seen_at and j.first_seen_at >= week_ago),
+            "recent_day": sum(1 for j in open_jobs if j.first_seen_at and j.first_seen_at >= day_ago),
         }
         by_site: dict[str, int] = {}
-        for j in all_jobs:
+        for j in open_jobs:
             by_site[j.site] = by_site.get(j.site, 0) + 1
         stats["by_site"] = by_site
+
+        # 전형 상태 필터(applied/doc_rejected 등)는 마감된 공고도 포함해야 함
+        if status in VALID_APP_STATUSES or status == "applied":
+            all_jobs = list(
+                session.execute(
+                    select(Job)
+                    .options(joinedload(Job.score), defer(Job.body_raw))
+                    .where(Job.is_applied == True)  # noqa: E712
+                ).unique().scalars()
+            )
+        else:
+            all_jobs = open_jobs
 
         if status == "ignored":
             jobs = [j for j in all_jobs if j.is_ignored]

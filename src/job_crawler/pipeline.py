@@ -79,19 +79,20 @@ def _mark_closed_jobs(site: str) -> int:
 
     두 조건 중 하나를 충족하면 마감 처리:
     - deadline_at이 설정됐고 now를 지난 경우 (마감일 경과)
-    - deadline_at이 없고 last_seen_at이 14일 이상 갱신되지 않은 경우
+    - deadline_at이 없고 last_seen_at이 7일 이상 갱신되지 않은 경우
       (마감일 정보가 없는 사이트에서 limit 제한 등으로 누락 시 false positive 방지)
 
     deadline_at이 미래로 설정된 공고는 last_seen_at 조건으로는 닫지 않는다.
     """
     now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
-    threshold = now - timedelta(days=14)
+    threshold = now - timedelta(days=7)
     with session_scope() as session:
         result = session.execute(
             update(Job)
             .where(
                 Job.site == site,
                 Job.is_closed == False,  # noqa: E712
+                Job.is_applied == False,  # noqa: E712  지원 이력 공고는 자동 마감 제외
                 or_(
                     and_(Job.deadline_at.isnot(None), Job.deadline_at < now),
                     and_(Job.deadline_at.is_(None), Job.last_seen_at < threshold),
@@ -111,6 +112,22 @@ def _upsert_job(detail: JobDetail) -> bool:
         existing = session.execute(
             select(Job).where(Job.site == s.site, Job.external_id == s.external_id)
         ).scalar_one_or_none()
+
+        # saramin 등 일부 사이트는 동일 공고를 주기적으로 새 external_id로 재등록함.
+        # external_id 미매칭 시 (site, company, title) 기준으로 열린 공고 재사용.
+        if not existing:
+            existing = session.execute(
+                select(Job).where(
+                    Job.site == s.site,
+                    Job.company == s.company,
+                    Job.title == s.title,
+                    Job.is_closed == False,  # noqa: E712
+                )
+            ).scalar_one_or_none()
+            if existing:
+                existing.external_id = s.external_id
+                existing.url = s.url
+
         if existing:
             existing.last_seen_at = datetime.now(timezone.utc).replace(tzinfo=None)
             existing.title = s.title
