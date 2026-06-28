@@ -16,5 +16,8 @@ dist/
 build/
 .playwright/
 logs/
-_*
+# 루트 레벨 임시 스크립트만 무시 (scheduler 자동분석 cleanup 대상).
+# 하위 디렉터리의 _partial.html 같은 언더스코어 접두 Jinja 파셜은 추적해야 하므로
+# `/_*`로 루트에 한정한다 (`_*`는 모든 경로의 파셜까지 잡아 신규 파셜이 누락됨).
+/_*
 *_tmp.py
