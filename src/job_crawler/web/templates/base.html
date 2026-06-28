@@ -66,6 +66,12 @@ window.addEventListener('scroll', () => {
   b.classList.toggle('show', window.scrollY > 300);
 });
 function scrollToTop() { window.scrollTo({top: 0, behavior: 'smooth'}); }
+// 뒤로가기 bfcache 복원 시 새로고침 — 상세에서 마감/전형 상태를 바꾼 뒤
+// 목록으로 돌아오면 캐시된 옛 화면이 떠 변경이 안 보이는 문제 방지.
+window.addEventListener('pageshow', (e) => {
+  const nav = performance.getEntriesByType('navigation')[0];
+  if (e.persisted || (nav && nav.type === 'back_forward')) window.location.reload();
+});
 </script>
 <style>
 :root {

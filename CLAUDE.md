@@ -189,3 +189,4 @@ class MySiteCrawler(BaseCrawler):
 | 카드 클릭 시 드롭다운 대신 상세로 이동 | select에 `event.stopPropagation()` 필요. 카드 `onclick`의 `closest()` 제외 대상에 `select` 포함 |
 | 드롭다운 바꿔도 카드 색 즉시 안 변함 | fragment 스왑은 드롭다운만 갱신 → `applyCardStatus()` JS로 `.job-card` 클래스 즉시 변경 |
 | 관심없음 선택해도 기본 목록에서 안 사라짐 | `applyCardStatus()`가 `status≠ignored`일 때 `style.display='none'` 처리 (DB 저장은 hx-post 병행) |
+| 상세에서 마감/상태 변경 후 뒤로가기 시 목록 반영 안 됨 | 브라우저 bfcache가 옛 목록 복원 → `base.html` `pageshow` 핸들러가 `e.persisted`/nav type=`back_forward`면 `location.reload()` |
