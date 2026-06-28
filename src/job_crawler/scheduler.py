@@ -42,10 +42,19 @@ def _run_analysis() -> None:
             capture_output=True,
             text=True,
         )
+        # 분석 후 미평가 잔량을 다시 세어 실제 진행분(저장 건수)을 추정 — rc=0이어도
+        # 한 건도 저장 안 되는 무진행 케이스를 조기 감지.
+        remaining = count_unscored_jobs(days=1)
+        scored = max(unscored - remaining, 0)
         if result.returncode == 0:
-            logger.info("auto-analysis: 완료")
+            if scored == 0:
+                logger.warning(f"auto-analysis: rc=0이나 저장 0건 (잔량 {remaining}) — 무진행 의심")
+            else:
+                logger.info(f"auto-analysis: 완료 — {scored}건 평가, 잔량 {remaining}")
         else:
-            logger.warning(f"auto-analysis: 비정상 종료 (rc={result.returncode})\n{result.stderr[:500]}")
+            logger.warning(
+                f"auto-analysis: 비정상 종료 (rc={result.returncode}, 평가 {scored}건, 잔량 {remaining})\n{result.stderr[:500]}"
+            )
     except subprocess.TimeoutExpired:
         logger.warning("auto-analysis: 타임아웃 (600s)")
     except Exception as e:  # noqa: BLE001

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import defer, joinedload
@@ -165,6 +166,49 @@ def index(
                 },
             },
         )
+
+
+# 주의: 이 두 라우트는 /jobs/{job_id} (int 변환)보다 먼저 등록해야 한다.
+# 그렇지 않으면 GET /jobs/new 가 {job_id}="new" 로 매칭돼 422가 난다.
+@router.get("/jobs/new", response_class=HTMLResponse)
+def new_job_form(request: Request):
+    """오프플랫폼(기업 채용홈 등) 공고 수동 등록 폼."""
+    return templates.TemplateResponse(request, "new_job.html", {})
+
+
+@router.post("/jobs/new")
+def create_manual_job(
+    title: str = Form(""),
+    company: str = Form(""),
+    url: str = Form(""),
+    location: str = Form(""),
+    body_text: str = Form(""),
+    application_status: str = Form("applied"),
+):
+    """수동 공고를 site='manual'로 생성해 지원 추적에 합류시킨다.
+
+    크롤되지 않는 공고(기업 채용 홈페이지 전용 등)도 대시보드에서
+    전형 단계를 추적할 수 있게 한다. is_applied=True로 생성.
+    """
+    title, company = title.strip(), company.strip()
+    if not title or not company:
+        raise HTTPException(400, "제목과 회사명은 필수입니다.")
+
+    status = application_status if application_status in VALID_APP_STATUSES else None
+    with session_scope() as session:
+        job = Job(
+            site="manual",
+            external_id=f"manual-{uuid4().hex}",
+            url=url.strip() or "",
+            title=title,
+            company=company,
+            location=location.strip() or None,
+            body_text=body_text.strip() or None,
+            is_applied=True,
+            application_status=status,
+        )
+        session.add(job)
+    return RedirectResponse("/?status=applied", status_code=303)
 
 
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)

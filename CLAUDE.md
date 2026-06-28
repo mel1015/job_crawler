@@ -35,6 +35,10 @@ jc-web
 jc-analyze --days 7          # 최근 7일 미평가 공고 건수 출력
 jc-analyze --limit 100       # 최대 100건 조회
 
+# 점수 저장 (stdin JSON → DB). 수작업 tmp 스크립트 대체
+echo '[{"job_id":1,"match_rate":70,"verdict":"적합",...}]' | jc-score
+jc-score < scores.json       # {"scores": [...]} 형식도 허용
+
 # 스케줄러 (09:00 / 19:00 KST 자동 크롤링)
 jc-scheduler
 
@@ -104,7 +108,12 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 **Claude Code 배치 스코어링만 사용** (`scoring/claude_batch.py`). Gemini는 제거됨.
 - `get_unscored_jobs(limit, days)`: `ScoreResult IS NULL` 또는 `model != 'claude-code'`인 공고 조회
 - `save_claude_scores(scores)`: `model='claude-code'`로 upsert. 저장 전 `validate_score()`로 타입 보정
+- `score_main()` (`jc-score`): stdin JSON(list 또는 `{"scores":[...]}`)을 받아 `save_claude_scores` 호출. 수작업 tmp 스크립트 대체
 - 대시보드 평가 버튼 없음 — 모든 스코어링은 Claude Code 세션에서 수행
+
+> **이력서 역량 프로파일 캐싱**: `resume/loader.py`의 `load_profile_cache()`/`save_profile_cache()`가
+> 이력서 본문 sha256 해시를 키로 `data/resume_profile.json`에 LLM 역량 스냅샷을 캐싱.
+> 분석 시 캐시 적중이면 역량 재도출 금지(드리프트 감소·토큰 절감), 이력서 변경 시 해시 불일치로 자동 무효화.
 
 > **스코어 포맷·verdict 기준·분석 프롬프트의 단일 출처: `scoring/contract.py`**
 > `verdict_for_rate()`, `SCORE_SCHEMA`, `build_analysis_prompt()` 참조.
@@ -112,7 +121,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 **Claude 분석 흐름**:
 1. `jc-analyze --days 7` → 미평가 건수 확인
 2. `jc-scheduler` 또는 직접 `claude -p "$(python -c 'from job_crawler.scoring.contract import build_analysis_prompt; print(build_analysis_prompt(7,50))')"` 실행
-3. `get_unscored_jobs()` 조회 → 이력서 비교 → `save_claude_scores()` 저장
+3. `get_unscored_jobs()` 조회 → 역량 프로파일(캐시 우선) 비교 → `save_claude_scores()` 또는 `jc-score` 저장
 4. 대시보드 `?sort=rate` 로 합격률 순 정렬 확인
 
 **이미지 공고 처리** (`is_image_only=True`인 공고):
@@ -125,8 +134,12 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 ### 웹 (`web/`)
 
 FastAPI + Jinja2 + HTMX. 라우터:
-- `routers/jobs.py`: 목록/상세/분석 조회/전형 상태 변경(`POST /jobs/{id}/application-status`)
+- `routers/jobs.py`: 목록/상세/분석 조회/전형 상태 변경(`POST /jobs/{id}/application-status`)/수동 공고 등록(`GET·POST /jobs/new`)
 - `routers/runs.py`: 크롤링 이력
+
+> **수동 공고 등록** (`GET·POST /jobs/new`, `new_job.html`): 크롤되지 않는 오프플랫폼 공고(기업 채용홈 등)를
+> `site="manual"`·`external_id="manual-<uuid>"`·`is_applied=True`로 생성해 전형 추적에 합류. 두 라우트는
+> `/jobs/{job_id}`(int)보다 **먼저** 등록해야 함 (아니면 `/jobs/new`가 `{job_id}="new"`로 매칭돼 422).
 
 > 지원완료·관심없음 토글 버튼(`toggle-applied`/`toggle-ignored` 라우트, `_applied_btn.html`/`_ignored_btn.html`)은 전형 상태 드롭다운으로 통합되며 제거됨. 드롭다운 변경 시 `applyCardStatus()` JS가 카드 색(`st-*` 클래스)을 즉시 갱신하고, hx-post가 DB 저장을 병행.
 

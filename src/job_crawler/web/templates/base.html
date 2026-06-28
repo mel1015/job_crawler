@@ -291,6 +291,7 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .badge.site-catch { background: #2a1a2e; color: #c084fc; }
 .badge.site-jumpit { background: #2a1e12; color: #fb923c; }
 .badge.site-remember { background: #2a1a1e; color: #fda4af; }
+.badge.site-manual { background: #232836; color: #cbd5e1; }
 .badge.pos { background: var(--surface3); color: var(--fg2); border: 1px solid var(--border); text-transform: none; font-weight: 600; }
 
 .chip {
@@ -485,6 +486,7 @@ a:hover { text-decoration: underline; }
   <span class="logo">JOB CRAWLER</span>
   <nav>
     <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">공고 목록</a>
+    <a href="/jobs/new" class="{% if request.url.path == '/jobs/new' %}active{% endif %}">공고 추가</a>
     <a href="/runs" class="{% if request.url.path == '/runs' %}active{% endif %}">크롤링 이력</a>
   </nav>
   <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
