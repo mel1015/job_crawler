@@ -32,7 +32,7 @@ def index(
     request: Request,
     site: str | None = Query(None),
     min_rate: str | None = Query(None),
-    status: str | None = Query(None, description="scored | unscored | applied | ignored"),
+    status: str | None = Query(None, description="scored | unscored | applied | ignored | closed"),
     q: str | None = Query(None),
     sort: str = Query("latest", description="latest | rate"),
     page: int = Query(1, ge=1),
@@ -76,8 +76,17 @@ def index(
             by_site[j.site] = by_site.get(j.site, 0) + 1
         stats["by_site"] = by_site
 
+        # 마감 보기: is_closed=True 공고만 별도 조회 (open_jobs는 is_closed=False라 미포함)
+        if status == "closed":
+            all_jobs = list(
+                session.execute(
+                    select(Job)
+                    .options(joinedload(Job.score), defer(Job.body_raw))
+                    .where(Job.is_closed == True)  # noqa: E712
+                ).unique().scalars()
+            )
         # 전형 상태 필터(applied/doc_rejected 등)는 마감된 공고도 포함해야 함
-        if status in VALID_APP_STATUSES or status == "applied":
+        elif status in VALID_APP_STATUSES or status == "applied":
             all_jobs = list(
                 session.execute(
                     select(Job)
@@ -90,6 +99,8 @@ def index(
 
         if status == "ignored":
             jobs = [j for j in all_jobs if j.is_ignored]
+        elif status == "closed":
+            jobs = [j for j in all_jobs if not j.is_ignored]
         else:
             jobs = [j for j in all_jobs if not j.is_ignored]
             if status == "scored":
@@ -260,3 +271,14 @@ def set_application_status(request: Request, job_id: int, status: str = Form("")
         return templates.TemplateResponse(
             request, "_application_status.html", {"job": job}
         )
+
+
+@router.post("/jobs/{job_id:int}/toggle-closed", response_class=HTMLResponse)
+def toggle_closed(request: Request, job_id: int):
+    """마감 여부 수동 토글. 크롤로 마감일이 안 잡히는 공고를 수기로 마감/해제."""
+    with session_scope() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            raise HTTPException(404)
+        job.is_closed = not job.is_closed
+        return templates.TemplateResponse(request, "_closed_btn.html", {"job": job})

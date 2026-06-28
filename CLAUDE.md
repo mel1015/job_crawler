@@ -134,7 +134,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 ### 웹 (`web/`)
 
 FastAPI + Jinja2 + HTMX. 라우터:
-- `routers/jobs.py`: 목록/상세/분석 조회/전형 상태 변경(`POST /jobs/{id}/application-status`)/수동 공고 등록(`GET·POST /jobs/new`)
+- `routers/jobs.py`: 목록/상세/분석 조회/전형 상태 변경(`POST /jobs/{id}/application-status`)/수동 공고 등록(`GET·POST /jobs/new`)/수동 마감 토글(`POST /jobs/{id}/toggle-closed`)
 - `routers/runs.py`: 크롤링 이력
 
 > **수동 공고 등록** (`GET·POST /jobs/new`, `new_job.html`): 크롤되지 않는 오프플랫폼 공고(기업 채용홈 등)를
@@ -143,11 +143,14 @@ FastAPI + Jinja2 + HTMX. 라우터:
 
 > 지원완료·관심없음 토글 버튼(`toggle-applied`/`toggle-ignored` 라우트, `_applied_btn.html`/`_ignored_btn.html`)은 전형 상태 드롭다운으로 통합되며 제거됨. 드롭다운 변경 시 `applyCardStatus()` JS가 카드 색(`st-*` 클래스)을 즉시 갱신하고, hx-post가 DB 저장을 병행.
 
+> **수동 마감 버튼** (`_closed_btn.html`, `POST /jobs/{id}/toggle-closed`): `is_closed`는 `application_status`와 **독립 축**이라 드롭다운에 섞지 않고 별도 버튼으로 둠 (지원완료한 공고도 마감 가능). 크롤로 마감일이 안 잡혀 자동 마감 안 되는 공고를 수기로 마감/해제하는 용도. 클릭 시 `hideCardOnClose()` JS가 현재 뷰와 안 맞으면 카드를 즉시 숨김(단 applied/전형 상태 필터는 `is_closed` 무시하므로 유지), hx-post가 DB 저장 병행. 마감 공고는 `?status=closed`로 열람·복구.
+
 대시보드 필터 (`status` 파라미터):
 - `scored` / `unscored`: 평가 완료/미평가
 - `applied`: `is_applied=True` 공고 (마감 여부 무관 — `is_closed` 무시)
 - `doc_passed`/`doc_rejected`/`interview`/`final_passed`/`final_rejected`: 전형 단계별 공고 (`application_status` 일치, 마감 여부 무관)
 - `ignored`: `is_ignored=True` 공고만 표시 (이 외 모든 상태에서는 `is_ignored=False` 공고만 표시)
+- `closed`: `is_closed=True` 공고만 별도 조회 (기본 목록은 `is_closed=False`라 미포함). 수동 마감/해제 공고 열람·복구용
 
 > **주의**: `applied`/전형 상태 필터에서는 `is_applied=True` 공고를 별도 쿼리로 조회 (`is_closed` 무시). stats 카운터는 항상 `is_closed=False` 기준으로 산출.
 
