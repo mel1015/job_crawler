@@ -165,6 +165,39 @@ def save_claude_scores(scores: list[dict]) -> int:
     return count
 
 
+def score_main() -> None:
+    """stdin JSON(점수 dict 리스트)을 읽어 저장. 수작업 tmp 스크립트를 대체.
+
+    사용: `python ... | jc-score` 또는 `jc-score < scores.json`
+    입력은 `[{job_id, match_rate, verdict, strengths, gaps, red_flags, action_tip}, ...]`
+    또는 `{"scores": [...]}` 형식 모두 허용.
+    """
+    import json
+    import sys
+
+    from ..logging_setup import setup_logging
+
+    setup_logging()
+
+    raw = sys.stdin.read()
+    if not raw.strip():
+        print("입력이 비어 있습니다. JSON 점수 리스트를 stdin으로 전달하세요.", file=sys.stderr)
+        sys.exit(1)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"JSON 파싱 실패: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    scores = data.get("scores") if isinstance(data, dict) else data
+    if not isinstance(scores, list):
+        print("입력은 점수 dict의 리스트(또는 {'scores': [...]}) 여야 합니다.", file=sys.stderr)
+        sys.exit(1)
+
+    saved = save_claude_scores(scores)
+    print(f"저장 완료: {saved}/{len(scores)}건")
+
+
 def main() -> None:
     """미평가 공고 현황 출력."""
     from ..logging_setup import setup_logging

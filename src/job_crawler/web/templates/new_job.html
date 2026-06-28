@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}공고 수동 등록{% endblock %}
+{% block main %}
+
+<div class="page-title"><span class="icon"></span><h2>공고 수동 등록</h2></div>
+
+<div class="card" style="max-width:680px;">
+  <p class="muted" style="font-size:13px; margin-bottom:16px;">
+    크롤링되지 않는 공고(기업 채용 홈페이지 전용 등)를 직접 등록해
+    대시보드에서 전형 단계를 추적합니다. 등록 시 <strong style="color:var(--fg2);">지원완료</strong> 상태로 저장됩니다.
+  </p>
+  <form method="post" action="/jobs/new" style="display:flex; flex-direction:column; gap:14px;">
+    <label style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fg2);">
+      제목 <span style="color:var(--bad);">*</span>
+      <input type="text" name="title" required
+             style="background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:14px;">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fg2);">
+      회사명 <span style="color:var(--bad);">*</span>
+      <input type="text" name="company" required
+             style="background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:14px;">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fg2);">
+      공고 URL
+      <input type="url" name="url" placeholder="https://..."
+             style="background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:14px;">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fg2);">
+      근무지
+      <input type="text" name="location"
+             style="background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:14px;">
+    </label>
+    <label style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fg2);">
+      전형 상태
+      <select name="application_status"
+              style="background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:14px;">
+        <option value="applied">지원완료 (결과대기)</option>
+        <option value="doc_passed">서류 합격</option>
+        <option value="interview">면접</option>
+        <option value="final_passed">최종 합격</option>
+        <option value="doc_rejected">서류 탈락</option>
+        <option value="final_rejected">최종 탈락</option>
+      </select>
+    </label>
+    <label style="display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fg2);">
+      본문 (선택)
+      <textarea name="body_text" rows="6"
+                style="background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:14px; resize:vertical;"></textarea>
+    </label>
+    <div style="display:flex; gap:10px; margin-top:4px;">
+      <button type="submit" class="btn">등록</button>
+      <a href="/" class="btn ghost">취소</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
