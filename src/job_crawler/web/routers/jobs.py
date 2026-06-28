@@ -168,8 +168,8 @@ def index(
         )
 
 
-# 주의: 이 두 라우트는 /jobs/{job_id} (int 변환)보다 먼저 등록해야 한다.
-# 그렇지 않으면 GET /jobs/new 가 {job_id}="new" 로 매칭돼 422가 난다.
+# /jobs/{job_id}는 {job_id:int} 컨버터로 못박아 "new" 같은 비-숫자 경로가
+# 절대 매칭되지 않게 한다 (등록 순서와 무관하게 /jobs/new 보호).
 @router.get("/jobs/new", response_class=HTMLResponse)
 def new_job_form(request: Request):
     """오프플랫폼(기업 채용홈 등) 공고 수동 등록 폼."""
@@ -211,7 +211,7 @@ def create_manual_job(
     return RedirectResponse("/?status=applied", status_code=303)
 
 
-@router.get("/jobs/{job_id}", response_class=HTMLResponse)
+@router.get("/jobs/{job_id:int}", response_class=HTMLResponse)
 def job_detail(request: Request, job_id: int):
     with session_scope() as session:
         job = session.execute(
@@ -222,7 +222,7 @@ def job_detail(request: Request, job_id: int):
         return templates.TemplateResponse(request, "detail.html", {"job": job})
 
 
-@router.get("/jobs/{job_id}/analysis", response_class=HTMLResponse)
+@router.get("/jobs/{job_id:int}/analysis", response_class=HTMLResponse)
 def get_analysis(request: Request, job_id: int):
     with session_scope() as session:
         job = session.execute(
@@ -235,7 +235,7 @@ def get_analysis(request: Request, job_id: int):
         )
 
 
-@router.post("/jobs/{job_id}/application-status", response_class=HTMLResponse)
+@router.post("/jobs/{job_id:int}/application-status", response_class=HTMLResponse)
 def set_application_status(request: Request, job_id: int, status: str = Form("")):
     with session_scope() as session:
         job = session.get(Job, job_id)
