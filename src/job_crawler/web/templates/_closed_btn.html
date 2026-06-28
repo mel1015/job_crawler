@@ -1,0 +1,11 @@
+<span id="closedbtn-{{ job.id }}">
+  <button type="button"
+          class="btn sm {% if job.is_closed %}closed-on{% else %}closed-off{% endif %}"
+          hx-post="/jobs/{{ job.id }}/toggle-closed"
+          hx-target="#closedbtn-{{ job.id }}"
+          hx-swap="outerHTML"
+          onclick="event.stopPropagation(); hideCardOnClose(this);"
+          title="{% if job.is_closed %}마감 해제(다시 목록에 표시){% else %}이 공고를 수동 마감 처리{% endif %}">
+    {% if job.is_closed %}↩ 마감해제{% else %}마감{% endif %}
+  </button>
+</span>
