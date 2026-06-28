@@ -20,6 +20,7 @@
       {% if job.first_seen_at %}<span class="chip">🗓 {{ job.first_seen_at.strftime('%Y-%m-%d') }}</span>{% endif %}
       {% if job.deadline_at %}<span class="chip warn">⏰ ~{{ job.deadline_at.strftime('%m-%d') }}</span>{% endif %}
       <a href="{{ job.url }}" target="_blank" rel="noopener" class="btn ghost sm">원문 열기 ↗</a>
+      {% include '_closed_btn.html' %}
     </div>
   </div>
 

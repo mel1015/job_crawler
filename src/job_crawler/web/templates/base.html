@@ -21,6 +21,15 @@ function applyCardStatus(sel) {
     if (v && v !== 'not_applied') card.classList.add('st-' + v);
   }
 }
+// 마감/마감해제 토글 시 현재 뷰와 안 맞으면 카드를 즉시 숨김 (DB 저장은 hx-post 병행).
+// 단 지원/전형 상태 필터는 is_closed를 무시하므로 그대로 둔다.
+function hideCardOnClose(btn) {
+  const card = btn.closest('.job-card');
+  if (!card) return;
+  const cur = new URLSearchParams(location.search).get('status');
+  const keep = ['applied','doc_passed','doc_rejected','interview','final_passed','final_rejected'].includes(cur);
+  if (!keep) card.style.display = 'none';
+}
 function toggleAnalysis(id) {
   const t = document.getElementById('analysis-' + id);
   if (!t) return;
@@ -272,6 +281,10 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .btn.ignored-off:hover { background: #2d3748; }
 .btn.ignored-on { background: transparent; color: #a0aec0; border: 1px solid #718096; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
 .btn.ignored-on:hover { background: #2d3748; }
+.btn.closed-off { background: transparent; color: var(--mute); border: 1px solid var(--border2); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+.btn.closed-off:hover { background: var(--surface2); color: var(--fg2); }
+.btn.closed-on { background: var(--surface3); color: var(--fg2); border: 1px solid var(--border2); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+.btn.closed-on:hover { background: var(--border2); color: var(--fg); }
 
 .job-card .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
 .job-card .tags .expand-btn {

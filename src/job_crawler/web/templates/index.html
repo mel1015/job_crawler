@@ -61,6 +61,7 @@
       <option value="final_passed" {% if filters.status == 'final_passed' %}selected{% endif %}>　최종합격</option>
       <option value="final_rejected" {% if filters.status == 'final_rejected' %}selected{% endif %}>　최종탈락</option>
       <option value="ignored" {% if filters.status == 'ignored' %}selected{% endif %}>관심없음</option>
+      <option value="closed" {% if filters.status == 'closed' %}selected{% endif %}>마감</option>
     </select>
   </div>
   <div class="field">
@@ -84,7 +85,7 @@
   <span class="af-label">적용된 필터:</span>
   {% if filters.q %}<span class="af-chip">검색: {{ filters.q }}</span>{% endif %}
   {% if filters.site %}<span class="af-chip">{{ filters.site | upper }}</span>{% endif %}
-  {% set status_labels = {'scored': '평가완료', 'unscored': '미평가', 'applied': '지원완료', 'doc_passed': '서류합격', 'doc_rejected': '서류탈락', 'interview': '면접', 'final_passed': '최종합격', 'final_rejected': '최종탈락', 'ignored': '관심없음'} %}
+  {% set status_labels = {'scored': '평가완료', 'unscored': '미평가', 'applied': '지원완료', 'doc_passed': '서류합격', 'doc_rejected': '서류탈락', 'interview': '면접', 'final_passed': '최종합격', 'final_rejected': '최종탈락', 'ignored': '관심없음', 'closed': '마감'} %}
   {% if filters.status %}<span class="af-chip">{{ status_labels.get(filters.status, filters.status) }}</span>{% endif %}
   {% if filters.min_rate %}<span class="af-chip">합격률 ≥ {{ filters.min_rate }}%</span>{% endif %}
   <a href="/" class="af-reset">전체 초기화</a>
@@ -133,6 +134,7 @@
         {% endif %}
       </div>
       <div class="score-area">
+        {% with job=j %}{% include '_closed_btn.html' %}{% endwith %}
         {% with job=j %}{% include '_application_status.html' %}{% endwith %}
         {% with job=j %}{% include '_score.html' %}{% endwith %}
       </div>
