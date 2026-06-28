@@ -35,6 +35,7 @@ jc-crawl = "job_crawler.pipeline:main"
 jc-web = "job_crawler.web.app:run"
 jc-scheduler = "job_crawler.scheduler:main"
 jc-analyze = "job_crawler.scoring.claude_batch:main"
+jc-score = "job_crawler.scoring.claude_batch:score_main"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -225,4 +227,45 @@ def load_resume(path: str | Path | None = None) -> ResumeProfile:
         schools=schools,
         certs=certs,
         raw_text=md,
+    )
+
+
+# ── 역량 프로파일 캐시 ─────────────────────────────────────────────────────────
+# 이력서는 거의 안 바뀌므로 LLM이 도출한 "역량·강점 요약"을 1회만 만들고 재사용한다.
+# 이력서 본문 해시를 키로 두어, 내용이 바뀌면 자동으로 캐시 무효화된다.
+
+_PROFILE_CACHE_PATH = Path("data/resume_profile.json")
+
+
+def _resume_path() -> Path:
+    from ..config import get_settings
+
+    return Path(get_settings().resume_path)
+
+
+def resume_content_hash(path: str | Path | None = None) -> str:
+    """이력서 본문 sha256 해시 (캐시 무효화 키)."""
+    p = Path(path) if path is not None else _resume_path()
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def load_profile_cache(path: str | Path | None = None) -> dict | None:
+    """현재 이력서 해시와 일치하는 캐시된 역량 프로파일 dict 반환 (없거나 불일치 시 None)."""
+    if not _PROFILE_CACHE_PATH.exists():
+        return None
+    try:
+        cached = json.loads(_PROFILE_CACHE_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if cached.get("hash") != resume_content_hash(path):
+        return None
+    return cached.get("profile")
+
+
+def save_profile_cache(profile: dict, path: str | Path | None = None) -> None:
+    """역량 프로파일을 현재 이력서 해시와 함께 캐시에 저장."""
+    _PROFILE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"hash": resume_content_hash(path), "profile": profile}
+    _PROFILE_CACHE_PATH.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
