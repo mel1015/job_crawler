@@ -39,6 +39,7 @@ def empty_settings(monkeypatch):
         positions_list=[],
         blacklist_companies_list=[],
         required_keywords_list=[],
+        it_company_whitelist_list=[],
     )
     monkeypatch.setattr(criteria, "get_settings", lambda: fake)
     return fake
@@ -72,9 +73,12 @@ def test_pass_filters_blacklist_company(empty_settings, monkeypatch):
     assert pass_filters(_summary("백엔드 개발자", company="나쁜회사 주식회사")) is False
 
 
-def test_pass_filters_catch_skips_required_keyword(empty_settings):
-    # catch는 _is_it_job에서 1차 필터링되므로 DEV_KEYWORDS 미포함이어도 통과
-    assert pass_filters(_summary("서비스 운영", site="catch")) is True
+def test_pass_filters_catch_whitelist_skips_keyword(empty_settings):
+    # catch 화이트리스트 IT 기업은 키워드 없는 제목도 통과 (다부문 공채 대응)
+    empty_settings.it_company_whitelist_list = ["넥슨"]
+    assert pass_filters(_summary("서비스 운영", company="넥슨", site="catch")) is True
+    # 화이트리스트 밖 기업은 일반 필터 적용 → 키워드 없으면 탈락
+    assert pass_filters(_summary("서비스 운영", company="무명회사", site="catch")) is False
 
 
 def test_pass_filters_position_whitelist(empty_settings):
