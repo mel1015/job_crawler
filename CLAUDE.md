@@ -134,8 +134,12 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 > 점수 드리프트 가드. `golden_set.json`(사람 정답 라벨 30건+본문) + `baseline_scores.json`(현재 프롬프트
 > 평가 기준선) + `scoring/eval.py`(`match_rate_mae`/`verdict_agreement`). LLM은 테스트에서 호출 안 함 —
 > **프롬프트 바꾸면 골든셋을 현재 프롬프트로 재평가 → `baseline_scores.json` 갱신** → 테스트가 사람 라벨
-> 대비 MAE≤12.0·verdict 일치≥60% 가드. 현재 baseline MAE 10.5(verdict 77%). 사람 정답 라벨 원본은
+> 대비 MAE≤12.0·verdict 일치≥60% 가드. 현재 baseline MAE 9.0(verdict 80%). 사람 정답 라벨 원본은
 > `~/Desktop/골든셋_라벨링.md`·`골든셋_라벨링_2차.md`. 표본 추출은 `extract_golden*.sql`로 재현.
+
+> **라벨링 정책**: 주력 언어(Java)와 다른 필수 언어를 요구하는 공고는 **부분 적합(35~50)** 으로 일관
+> 채점(백엔드 설계·DB·API 역량 전이 인정). 골든셋 내 동일 상황을 0/40/75로 달리 매겼던 비일관(NHN·리디·모카)을
+> 40으로 통일 → MAE 10.5→9.0. 골든셋은 회귀 baseline이므로 **케이스 패치 금지, 일반 정책만 추가**(과적합 방지).
 
 **이미지 공고 처리** (`is_image_only=True`인 공고):
 - `image_urls` 필드에 이미지 URL 목록 포함. 이미지 공고 스코어링 절차:
