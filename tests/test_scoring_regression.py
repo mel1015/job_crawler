@@ -18,9 +18,10 @@ from job_crawler.scoring.eval import match_rate_mae, verdict_agreement
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 
-# 룰 추가 전 MAE 14.0 → 룰3까지 적용 후 8.9. 노이즈 바닥(~2.8)을 감안해
-# 회귀 가드 임계는 11.0 (룰 적용 전 수준으로 퇴행하면 실패).
-MAE_THRESHOLD = 11.0
+# 골든셋 30건 기준. 룰 적용 전 20건 MAE 14.0 → 룰3 적용 후 20건 8.9 →
+# 어려운 2차 10건 추가로 30건 baseline 10.5. 노이즈 바닥(~2.8)을 감안해
+# 회귀 가드 임계는 12.0 (룰 적용 전 수준으로 퇴행하면 실패, 현재는 여유).
+MAE_THRESHOLD = 12.0
 VERDICT_AGREEMENT_MIN = 0.60
 
 
@@ -38,7 +39,7 @@ def baseline() -> dict[int, int | None]:
 
 def test_golden_set_integrity():
     data = json.loads((GOLDEN_DIR / "golden_set.json").read_text(encoding="utf-8"))
-    assert len(data) == 20
+    assert len(data) == 30
     for item in data:
         assert set(item) >= {"job_id", "title", "body_text", "human_label"}
         assert 0 <= item["human_label"] <= 100
