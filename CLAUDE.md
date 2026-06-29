@@ -130,6 +130,12 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 3. `get_unscored_jobs()` 조회 → 역량 프로파일(캐시 우선) 비교 → `save_claude_scores()` 또는 `jc-score` 저장
 4. 대시보드 `?sort=rate` 로 합격률 순 정렬 확인
 
+> **골든셋 회귀 테스트** (`tests/test_scoring_regression.py`, `tests/golden/`): 채점 룰/프롬프트 변경 시
+> 점수 드리프트 가드. `golden_set.json`(사람 정답 라벨 20건+본문) + `baseline_scores.json`(현재 프롬프트
+> 평가 기준선) + `scoring/eval.py`(`match_rate_mae`/`verdict_agreement`). LLM은 테스트에서 호출 안 함 —
+> **프롬프트 바꾸면 골든셋을 현재 프롬프트로 재평가 → `baseline_scores.json` 갱신** → 테스트가 사람 라벨
+> 대비 MAE≤11.0·verdict 일치≥60% 가드. 현재 baseline MAE 8.9. 사람 정답 라벨 원본은 `~/Desktop/골든셋_라벨링.md`.
+
 **이미지 공고 처리** (`is_image_only=True`인 공고):
 - `image_urls` 필드에 이미지 URL 목록 포함. 이미지 공고 스코어링 절차:
   1. `job["is_image_only"] == True` 확인
