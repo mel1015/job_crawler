@@ -118,6 +118,12 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 > **스코어 포맷·verdict 기준·분석 프롬프트의 단일 출처: `scoring/contract.py`**
 > `verdict_for_rate()`, `SCORE_SCHEMA`, `build_analysis_prompt()` 참조.
 
+> **채점 룰** (`build_analysis_prompt()` 내 "## 채점 규칙"): 골든셋 eval로 검증된 4개 룰.
+> ① hard-reject(명시 필수요건 미달만 과감히 ↓: 학력·필수스택·도메인경험·연차), ② 일반 백엔드
+> 과민 금지(보유 스택 겹치면 60~90 정상), ③ **특정 시스템 경험(PLM·ERP·SAP모듈 등) 필수면
+> 언어 일치보다 hard-reject 우선**(Java 겹쳐도 부적합), ④ full-range(0~100 끝까지, 중간대 회피).
+> 사람 라벨 대비 MAE 14→9로 개선 검증(룰 정제 과정에서 ②가 ③ 없이는 PLM류를 과보호하는 부작용 확인).
+
 **Claude 분석 흐름**:
 1. `jc-analyze --days 7` → 미평가 건수 확인
 2. `jc-scheduler` 또는 직접 `claude -p "$(python -c 'from job_crawler.scoring.contract import build_analysis_prompt; print(build_analysis_prompt(7,50))')"` 실행
