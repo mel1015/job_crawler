@@ -1,7 +1,7 @@
 # job_crawler
 
 내 조건(직무/스택/연차/지역)에 맞는 채용 공고를 여러 사이트에서 수집하고,
-필요할 때만 Gemini API로 이력서 기반 **예상 합격률**을 평가해주는 로컬 도구.
+Claude Code로 이력서 기반 **예상 합격률**을 평가해주는 로컬 도구.
 
 ## 특징
 
@@ -9,11 +9,10 @@
 - **조건 기반 수집**: `.env`의 키워드별로 반복 검색 → `external_id` 기준 병합(dedupe)
 - **병렬 fetch**: `asyncio.gather` + `Semaphore(CRAWL_CONCURRENCY)` — 동시 N개 상세 조회
 - **세분화 필터**: 블랙리스트 키워드/기업명, 직군 화이트리스트, 제목 필수 키워드
-- **합격률 평가는 온디맨드**: 자동 호출 금지, 대시보드에서 건별 버튼으로만 Gemini 호출
-- **Claude Code 배치 스코어링**: Gemini API 비용 없이 Claude Code 세션에서 직접 이력서 매칭 분석 (`scoring/claude_batch.py`)
+- **Claude Code 배치 스코어링**: API 비용 없이 Claude Code 세션에서 직접 이력서 매칭 분석 (`scoring/claude_batch.py`)
 - **저장**: SQLite (`data/jobs.db`), SQLAlchemy 2.0 + Alembic
-- **UI**: FastAPI + HTMX 대시보드 (필터/정렬/상세/합격률 분석/지원완료/관심없음)
-- **스케줄**: APScheduler (09:00 / 19:00 KST)
+- **UI**: FastAPI + HTMX 대시보드 (필터/정렬/상세/합격률 분석/전형 상태 관리)
+- **스케줄**: APScheduler (09:00 / 19:00 KST) + 크롤 완료 후 자동 분석
 
 ## 지원 사이트
 
@@ -34,7 +33,7 @@
 src/job_crawler/
 ├── config.py              # pydantic-settings (.env 연동)
 ├── pipeline.py            # crawl → dedupe → filter → parallel fetch → upsert
-├── scheduler.py           # APScheduler 엔트리
+├── scheduler.py           # APScheduler 엔트리 + 크롤 후 자동 분석
 ├── crawlers/
 │   ├── base.py            # BaseCrawler / SearchCriteria / JobSummary / JobDetail
 │   ├── wanted.py
@@ -44,13 +43,13 @@ src/job_crawler/
 │   ├── remember.py
 │   ├── catch.py
 │   ├── registry.py        # ACTIVE_SITES, build_crawler()
-│   └── company/           # 개별 기업 채용 페이지 (toss, greeting 등, ACTIVE_SITES 미포함)
+│   └── company/           # 개별 기업 채용 페이지 (toss 등, ACTIVE_SITES 미포함)
 ├── db/models.py           # Job / ScoreResult / CrawlRun
-├── resume/loader.py       # MD → dict
+├── resume/loader.py       # MD → dict + 역량 프로파일 캐시
 ├── scoring/
-│   ├── gemini_client.py   # response_schema 기반 JSON 강제
-│   ├── matcher.py         # 단건 평가 (status=scoring 락)
-│   └── claude_batch.py    # Claude Code 배치 스코어링 (get_unscored_jobs / save_claude_scores)
+│   ├── contract.py        # 스키마·verdict 기준·분석 프롬프트 단일 출처
+│   ├── claude_batch.py    # get_unscored_jobs / save_claude_scores / jc-score CLI
+│   └── eval.py            # 골든셋 회귀 평가 (match_rate_mae / verdict_agreement)
 ├── filters/criteria.py    # BLACKLIST_KEYWORDS, DEV_KEYWORDS, extract_position, pass_filters
 └── web/                   # FastAPI + Jinja2 (HTMX)
 ```
@@ -81,8 +80,6 @@ cp .env.example .env
 
 | 변수 | 설명 | 예시 |
 |------|------|------|
-| `GEMINI_API_KEY` | Gemini API 키 | `AIza...` |
-| `GEMINI_MODEL` | 모델 | `gemini-2.5-flash` |
 | `RESUME_PATH` | 이력서 MD 파일 절대 경로 | `/Users/.../메인_이력서.md` |
 | `DESIRED_ROLES` | 검색 키워드 (쉼표 구분) | `백엔드,Backend,서버,Java,Spring,금융,핀테크,SAP` |
 | `DESIRED_REGIONS` | 지역 (쉼표 구분) | `서울,경기,판교` |
@@ -125,6 +122,22 @@ jc-crawl --site wanted --site saramin --limit 100
 4. `asyncio.gather`로 병렬 상세 조회 (동시 `CRAWL_CONCURRENCY`개)
 5. SQLite에 upsert, `crawl_runs`에 실행 이력 기록
 
+### 합격률 평가 (Claude Code)
+
+모든 스코어링은 Claude Code 세션에서 수행한다. 대시보드에 평가 버튼 없음.
+
+```bash
+# 미평가 건수 확인
+jc-analyze --days 7
+
+# Claude Code 세션에서 분석 실행 (/analyze 스킬 또는 직접)
+claude -p "$(python -c 'from job_crawler.scoring.contract import build_analysis_prompt; print(build_analysis_prompt(7,50))')"
+
+# 점수 저장 (stdin JSON)
+echo '[{"job_id":1,"match_rate":70,"verdict":"적합",...}]' | jc-score
+jc-score < scores.json
+```
+
 ### 대시보드
 
 ```bash
@@ -133,12 +146,10 @@ jc-web
 ```
 
 - 목록: 사이트/회사/제목/합격률/버딕트/등록일 + 필터/정렬
-- 상세: `/jobs/{id}` — 원문 링크, 기술스택, 본문
-- **합격률 평가 버튼**: 클릭 시 `POST /jobs/{id}/score` → Gemini 1회 호출
-- **재평가**: `POST /jobs/{id}/rescore`
-- **분석 펼치기**: strengths/gaps/red_flags/action_tip 인라인 표시
-- **지원완료 토글**: `POST /jobs/{id}/toggle-applied` — 지원완료 표시/해제
-- **관심없음 토글**: `POST /jobs/{id}/toggle-ignored` — 기본 목록에서 숨김/복원
+- 상세: `/jobs/{id}` — 원문 링크, 기술스택, 본문, 평가 결과
+- **전형 상태 드롭다운**: 결과대기 → 서류통과 / 서류탈락 / 면접 / 최종합격 / 최종탈락
+- **수동 마감 버튼**: `POST /jobs/{id}/toggle-closed` — 자동 마감 안 잡히는 공고 수동 처리
+- **공고 직접 등록**: `GET/POST /jobs/new` — 크롤 안 되는 오프플랫폼 공고 수동 추가
 
 ### 스케줄러
 
@@ -146,7 +157,7 @@ jc-web
 nohup .venv/bin/jc-scheduler > logs/scheduler.log &
 ```
 
-매일 09:00 / 19:00 KST에 `ACTIVE_SITES` 전부 크롤링.
+매일 09:00 / 19:00 KST에 `ACTIVE_SITES` 전부 크롤링 → 완료 후 미평가 공고 자동 분석.
 
 ## 대시보드 필터
 
@@ -177,8 +188,7 @@ nohup .venv/bin/jc-scheduler > logs/scheduler.log &
 |------|------|------|
 | saramin 타임아웃 | IP 차단 | `REQUEST_DELAY_SEC` 증가 (예: 5) |
 | jobkorea 결과 0건 | Tailwind 셀렉터 개편 | `crawlers/jobkorea.py:_parse_list` 셀렉터 확인 |
-| catch body_text 비어있음 | 이미지 공고 | 정상 — `(이미지 공고 — 원문 링크에서 확인)` 표시됨 |
-| 합격률 평가 500 에러 | Gemini API 키 누락/만료 | `.env`의 `GEMINI_API_KEY` 확인 |
+| catch body_text 비어있음 | 이미지 공고 | Claude Code 세션에서 `image_urls` 이미지 다운로드 후 시각 분석 |
 | `alembic upgrade head` 실패 | `data/` 디렉토리 없음 | `mkdir -p data` |
 | `jc-crawl` 명령 없음 | venv 미활성화 | `pip install -e .` 아닌 `source .venv/bin/activate` |
 | 대시보드 포트 충돌 (Errno 48) | 기존 프로세스 살아있음 | `lsof -i :8000 -n -P` → `kill <PID>` |
