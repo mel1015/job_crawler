@@ -37,7 +37,7 @@
       <div class="num">{{ r }}<span class="pct">%</span></div>
       <div class="info">
         <div class="verdict-text">{{ s.verdict or '평가 완료' }}</div>
-        <div class="muted" style="font-size:12px;">예상 합격률 (이력서 기반 · Gemini)</div>
+        <div class="muted" style="font-size:12px;">예상 합격률 (이력서 기반 · Claude)</div>
         <div class="score-bar"><span class="fill" style="width: {{ r }}%;"></span></div>
       </div>
       <button class="btn ghost sm"
@@ -45,7 +45,7 @@
               hx-target="#score-{{ job.id }}"
               hx-swap="outerHTML"
               hx-on::after-request="if(event.detail.successful) location.reload()"
-              hx-confirm="Gemini를 한 번 더 호출해서 덮어씁니다. 진행할까요?">재평가</button>
+              hx-confirm="Claude Code로 재평가합니다. 진행할까요?">재평가</button>
       <span id="score-{{ job.id }}" hidden></span>
     </div>
   {% else %}

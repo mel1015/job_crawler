@@ -21,3 +21,9 @@ logs/
 # `/_*`로 루트에 한정한다 (`_*`는 모든 경로의 파셜까지 잡아 신규 파셜이 누락됨).
 /_*
 *_tmp.py
+
+# 골든셋 원본 라벨/작업 파일 (로컬 전용, golden_set.json·baseline_scores.json은 추적)
+tests/golden/골든셋*
+
+# 로컬 전용 문서
+PORTFOLIO_job_crawler.md
