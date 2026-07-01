@@ -1,6 +1,6 @@
 {% set s = job.score %}
 <span id="score-{{ job.id }}">
-{% if not s or not s.match_rate %}
+{% if not s or s.match_rate is none %}
   <span class="chip muted" style="font-size:12px;">미평가</span>
 {% else %}
   {% set r = s.match_rate or 0 %}
