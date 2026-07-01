@@ -127,7 +127,14 @@ def index(
             jobs = [j for j in jobs if j.score and (j.score.match_rate or 0) >= min_rate_val]
 
         if sort == "rate":
-            jobs.sort(key=lambda j: (j.score.match_rate if j.score and j.score.match_rate else -1), reverse=True)
+            jobs.sort(
+                key=lambda j: (
+                    j.score.match_rate
+                    if j.score and j.score.match_rate is not None
+                    else -1
+                ),
+                reverse=True,
+            )
         else:
             jobs.sort(key=lambda j: j.first_seen_at, reverse=True)
 
