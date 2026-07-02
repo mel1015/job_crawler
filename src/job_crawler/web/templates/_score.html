@@ -1,7 +1,9 @@
 {% set s = job.score %}
 <span id="score-{{ job.id }}">
-{% if not s or s.match_rate is none %}
+{% if not s %}
   <span class="chip muted" style="font-size:12px;">미평가</span>
+{% elif s.match_rate is none %}
+  <span class="chip bad" style="font-size:12px;" onclick="toggleAnalysis({{ job.id }})" title="클릭하여 평가 근거 보기">{{ s.verdict or '평가불가' }}</span>
 {% else %}
   {% set r = s.match_rate or 0 %}
   <span class="score-pill {% if r >= 75 %}high{% elif r >= 50 %}mid{% else %}low{% endif %}"
