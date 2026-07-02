@@ -48,6 +48,11 @@
               hx-confirm="Claude Code로 재평가합니다. 진행할까요?">재평가</button>
       <span id="score-{{ job.id }}" hidden></span>
     </div>
+  {% elif s and s.status == 'done' %}
+    <div style="display:flex; align-items:center; gap:10px; padding:14px; background:var(--surface2); border:1px solid var(--border); border-radius:12px;">
+      <span class="chip bad" style="font-size:12px;">{{ s.verdict or '평가불가' }}</span>
+      <span class="muted" style="font-size:12px;">아래 평가 근거 참고</span>
+    </div>
   {% else %}
     <div style="display:flex; align-items:center; gap:10px; padding:14px; background:var(--surface2); border:1px solid var(--border); border-radius:12px;">
       <span class="muted">아직 평가되지 않았습니다.</span>
