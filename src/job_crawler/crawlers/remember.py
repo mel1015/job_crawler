@@ -59,10 +59,11 @@ class RememberCrawler(BaseCrawler):
         }
         if criteria.keywords:
             search_body["keywords"] = criteria.keywords
-        if criteria.years_min is not None:
-            search_body["min_experience"] = criteria.years_min
-        if criteria.years_max is not None and criteria.years_max < 99:
-            search_body["max_experience"] = criteria.years_max
+        # min_experience/max_experience는 remember API에 전달하지 않는다:
+        # 경력 구간이 설정되지 않은 공고(min_experience=None)가 이 필터를 걸면
+        # 통째로 결과에서 빠지는 API 버그성 동작이 확인됨
+        # (예: 토스 Server Developer 공고 다수 누락). 경력 적합성은
+        # REQUIRED_KEYWORDS/DESIRED_POSITIONS 필터로 대체.
 
         summaries: list[JobSummary] = []
         page = 1
