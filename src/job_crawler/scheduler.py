@@ -60,9 +60,12 @@ def _run_analysis() -> None:
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=e).error("auto-analysis: 실행 실패")
     finally:
-        for pattern in ("_*", "*_tmp.py"):
+        for pattern in ("_*", "*_tmp.py", "tmp_*"):
             for f in _REPO_ROOT.glob(pattern):
-                f.unlink(missing_ok=True)
+                if f.is_dir():
+                    shutil.rmtree(f, ignore_errors=True)
+                else:
+                    f.unlink(missing_ok=True)
 
 
 async def _job(limit: int = 30) -> None:
