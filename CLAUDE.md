@@ -218,3 +218,4 @@ class MySiteCrawler(BaseCrawler):
 | 관심없음 선택해도 기본 목록에서 안 사라짐 | `applyCardStatus()`가 `status≠ignored`일 때 `style.display='none'` 처리 (DB 저장은 hx-post 병행) |
 | 상세에서 마감/상태 변경 후 뒤로가기 시 목록 반영 안 됨 | 브라우저 bfcache가 옛 목록 복원 → `base.html` `pageshow` 핸들러가 `e.persisted`/nav type=`back_forward`면 `location.reload()` |
 | remember에서 특정 회사(토스 등) 공고가 안 잡힘 | ① 회사가 영문 제목(`Server Developer` 등) 사용 시 `DESIRED_ROLES`에 대응 영문 키워드 누락 여부 확인 ② `crawlers/remember.py`가 `min_experience`/`max_experience`를 API에 보내면 경력 미설정(`None`) 공고가 통째로 결과에서 빠지는 remember API 버그성 동작 있음 — remember는 경력 필터 전달 안 함(의도적) |
+| 루트에 세션 임시 파일/폴더가 git status에 계속 남음 | `scheduler.py`의 자동분석 cleanup(`_run_analysis` finally 블록)은 `_*`/`*_tmp.py`/`tmp_*` 패턴만 정리하고 그 외 이름은 안 지워짐 — 세션에서 임시 파일 만들 때 반드시 이 패턴 중 하나로 명명 (또는 이미지 다운로드처럼 프로젝트 밖 시스템 `/tmp/` 사용) |
