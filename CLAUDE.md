@@ -56,13 +56,14 @@ pytest tests/test_resume_loader.py  # 단일 파일
 
 ## 커스텀 스킬 (`.claude/skills/`)
 
-프로젝트 로컬 슬래시 명령. Claude Code 세션에서 `/crawl`, `/analyze` 로 호출.
+프로젝트 로컬 슬래시 명령. Claude Code 세션에서 `/crawl`, `/analyze`, `/check-daemon` 으로 호출.
 
-- `/crawl [limit=300] [--analyze]`: `jc-crawl --limit LIMIT` 실행 → 최근 30분 내 `CrawlRun` 이력을 사이트별로 조회해 fetched/new_jobs/status 요약 출력. `--analyze` 시 완료 후 `/analyze`(days=1, limit=50)를 이어서 실행
-- `/analyze [days=7] [limit=50]`: `count_unscored_jobs()` 로 미평가 건수 확인 → 0건이면 종료 → `build_analysis_prompt()` 로 출력된 절차(이력서 프로파일 비교·채점 규칙 적용·이미지 공고 시각 분석)를 따라 평가 → `save_claude_scores()` 저장 → 잔여 미평가 건수 재조회 후 보고
+- `/crawl [limit=300] [--analyze]`: `jc-crawl --limit LIMIT` 실행 → 최근 30분 내 `CrawlRun` 이력을 사이트별로 조회해 fetched/new_jobs/status 요약 출력. `--analyze` 시 완료 후 `/analyze`(days=1)를 이어서 실행
+- `/analyze [days=7] [limit=전체건수]`: `count_unscored_jobs()` 로 미평가 건수 확인 → 0건이면 종료. limit 미지정 시 이 건수(N)를 그대로 사용해 전체를 조회(20건 초과는 병렬 배치가 규모를 흡수하므로 임의 상한 없음) → `build_analysis_prompt()` 로 출력된 절차(이력서 프로파일 비교·채점 규칙 적용·이미지 공고 시각 분석)를 따라 평가 → `save_claude_scores()` 저장 → 잔여 미평가 건수 재조회 후 보고
   - 미평가 건수(N) 20건 초과 시 병렬 배치 처리: `num_batches = min(4, ceil(N/15))` 로 분할해 `Agent`(general-purpose) 를 한 메시지에서 동시 호출, 배치별 결과(JSON 배열만 반환·DB 미저장)를 메인이 취합해 `save_claude_scores()` 1회 호출로 저장(SQLite 동시쓰기 락 방지). 크롤링 1회 평균 신규 공고 32건(중앙값 20건) 기준 임계값
+- `/check-daemon`: `jc-scheduler`·`caffeinate` 프로세스 생존 확인(`pgrep`) → 최근 크롤링 결과(마지막 수집 시각·오늘 신규 건수·미평가 건수) DB 조회 → 스케줄(09:00/19:00 KST) 기준 미실행 의심 여부 판정 후 4줄 이내 보고. 죽어있으면 재기동 명령을 제시만 하고 직접 실행하지 않음
 
-두 스킬 모두 실제 로직은 `scoring/claude_batch.py`·`scoring/contract.py`에 있고, 스킬 파일은 인자 파싱과 실행 순서만 정의.
+`/crawl`·`/analyze` 실제 로직은 `scoring/claude_batch.py`·`scoring/contract.py`에 있고, 스킬 파일은 인자 파싱과 실행 순서만 정의. `/check-daemon`은 별도 모듈 없이 스킬 파일 자체에 절차 기술.
 
 ## Architecture
 
