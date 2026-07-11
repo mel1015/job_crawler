@@ -34,7 +34,7 @@ def index(
     min_rate: str | None = Query(None),
     status: str | None = Query(None, description="scored | unscored | applied | ignored | closed"),
     q: str | None = Query(None),
-    sort: str = Query("latest", description="latest | rate"),
+    sort: str = Query("rate", description="latest | rate"),
     page: int = Query(1, ge=1),
 ):
     site = site or None
