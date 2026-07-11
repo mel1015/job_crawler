@@ -115,15 +115,24 @@ def _upsert_job(detail: JobDetail) -> bool:
 
         # saramin 등 일부 사이트는 동일 공고를 주기적으로 새 external_id로 재등록함.
         # external_id 미매칭 시 (site, company, title) 기준으로 열린 공고 재사용.
+        # 과거 재등록으로 열린 중복이 이미 존재할 수 있으므로 최신 1건을 재사용
+        # (scalar_one_or_none은 중복 시 MultipleResultsFound로 크롤 전체를 중단시킴).
         if not existing:
-            existing = session.execute(
-                select(Job).where(
-                    Job.site == s.site,
-                    Job.company == s.company,
-                    Job.title == s.title,
-                    Job.is_closed == False,  # noqa: E712
+            existing = (
+                session.execute(
+                    select(Job)
+                    .where(
+                        Job.site == s.site,
+                        Job.company == s.company,
+                        Job.title == s.title,
+                        Job.is_closed == False,  # noqa: E712
+                    )
+                    .order_by(Job.last_seen_at.desc(), Job.id.desc())
+                    .limit(1)
                 )
-            ).scalar_one_or_none()
+                .scalars()
+                .first()
+            )
             if existing:
                 existing.external_id = s.external_id
                 existing.url = s.url

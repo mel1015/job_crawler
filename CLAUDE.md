@@ -207,6 +207,7 @@ class MySiteCrawler(BaseCrawler):
 | 증상 | 해결 |
 |------|------|
 | saramin 타임아웃 | `.env`의 `REQUEST_DELAY_SEC` 증가 (예: 5) |
+| 크롤 run 전체가 `MultipleResultsFound` error | `_upsert_job`의 `(site, company, title)` 재사용 조회는 최신 1건 재사용(`scalars().first()`) 유지 — 열린 중복 공고 존재 시 `scalar_one_or_none()`은 사이트 크롤 전체를 중단시킴. 중복 데이터는 그룹당 최신 1건만 남기고 close |
 | jobkorea 결과 0건 | `crawlers/jobkorea.py:_parse_list` CSS 셀렉터 확인 |
 | catch body_text 이미지 공고 placeholder | 이미지 공고 — Claude Code 세션에서 이미지 다운로드 후 시각 분석 |
 | `jc-crawl` 명령 없음 | `pip install -e .`가 아닌 `source .venv/bin/activate` 먼저 확인 |
