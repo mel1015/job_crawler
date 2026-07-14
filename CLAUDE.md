@@ -58,6 +58,8 @@ pytest tests/test_resume_loader.py  # 단일 파일
 
 프로젝트 로컬 슬래시 명령. Claude Code 세션에서 `/crawl`, `/analyze`, `/check-daemon` 으로 호출.
 
+`/crawl`, `/analyze`는 frontmatter에 `model: claude-sonnet-5`, `effort: xhigh`가 고정되어 세션 모델과 무관하게 해당 설정으로 실행됨 (frontmatter는 정적 YAML이라 env 참조 불가). `/analyze` 병렬 배치의 서브에이전트도 `model: "sonnet"`으로 호출. `jc-scheduler`의 자동분석(`_run_analysis`)은 `config.get_analysis_model_settings()`를 통해 `.env`의 `ANALYSIS_MODEL`/`ANALYSIS_EFFORT`/`ANALYSIS_TIMEOUT_SEC`(기본 claude-sonnet-5 / xhigh / 1800초)로 설정.
+
 - `/crawl [limit=300] [--analyze]`: `jc-crawl --limit LIMIT` 실행 → 최근 30분 내 `CrawlRun` 이력을 사이트별로 조회해 fetched/new_jobs/status 요약 출력. `--analyze` 시 완료 후 `/analyze`(days=1)를 이어서 실행
 - `/analyze [days=7] [limit=전체건수]`: `count_unscored_jobs()` 로 미평가 건수 확인 → 0건이면 종료. limit 미지정 시 이 건수(N)를 그대로 사용해 전체를 조회(20건 초과는 병렬 배치가 규모를 흡수하므로 임의 상한 없음) → `build_analysis_prompt()` 로 출력된 절차(이력서 프로파일 비교·채점 규칙 적용·이미지 공고 시각 분석)를 따라 평가 → `save_claude_scores()` 저장 → 잔여 미평가 건수 재조회 후 보고
   - 미평가 건수(N) 20건 초과 시 병렬 배치 처리: `num_batches = min(4, ceil(N/15))` 로 분할해 `Agent`(general-purpose) 를 한 메시지에서 동시 호출, 배치별 결과(JSON 배열만 반환·DB 미저장)를 메인이 취합해 `save_claude_scores()` 1회 호출로 저장(SQLite 동시쓰기 락 방지). 크롤링 1회 평균 신규 공고 32건(중앙값 20건) 기준 임계값
