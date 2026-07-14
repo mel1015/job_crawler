@@ -11,6 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 
+from .config import get_analysis_model_settings
 from .crawlers.registry import ACTIVE_SITES
 from .logging_setup import setup_logging
 from .pipeline import run as run_pipeline
@@ -33,12 +34,21 @@ def _run_analysis() -> None:
         logger.info("auto-analysis: 미평가 공고 없음, 스킵")
         return
 
-    logger.info(f"auto-analysis: 미평가 {unscored}건 → claude -p 실행")
+    model, effort, timeout_sec = get_analysis_model_settings()
+    logger.info(f"auto-analysis: 미평가 {unscored}건 → claude -p ({model}/{effort})")
     try:
         result = subprocess.run(
-            [claude_bin, "-p", build_analysis_prompt(days=1, limit=min(unscored, 50))],
+            [
+                claude_bin,
+                "-p",
+                "--model",
+                model,
+                "--effort",
+                effort,
+                build_analysis_prompt(days=1, limit=min(unscored, 50)),
+            ],
             cwd=str(_REPO_ROOT),
-            timeout=600,  # 최대 10분
+            timeout=timeout_sec,
             capture_output=True,
             text=True,
         )
@@ -56,7 +66,7 @@ def _run_analysis() -> None:
                 f"auto-analysis: 비정상 종료 (rc={result.returncode}, 평가 {scored}건, 잔량 {remaining})\n{result.stderr[:500]}"
             )
     except subprocess.TimeoutExpired:
-        logger.warning("auto-analysis: 타임아웃 (600s)")
+        logger.warning(f"auto-analysis: 타임아웃 ({timeout_sec}s)")
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=e).error("auto-analysis: 실행 실패")
     finally:

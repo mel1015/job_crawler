@@ -40,6 +40,11 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # Claude 자동분석 모델 설정 (scheduler._run_analysis)
+    analysis_model: str = "claude-sonnet-5"
+    analysis_effort: str = "xhigh"
+    analysis_timeout_sec: int = 1800
+
     @property
     def it_company_whitelist_list(self) -> list[str]:
         return [s.strip() for s in self.it_company_whitelist.split(",") if s.strip()]
@@ -68,3 +73,9 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def get_analysis_model_settings() -> tuple[str, str, int]:
+    """자동분석에 쓸 (model, effort, timeout_sec)을 .env 설정에서 반환."""
+    s = get_settings()
+    return s.analysis_model, s.analysis_effort, s.analysis_timeout_sec
