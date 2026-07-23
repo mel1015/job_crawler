@@ -156,7 +156,21 @@ class SaraminCrawler(BaseCrawler):
             experience=meta.get("experience"),
             employment_type=meta.get("employment_type"),
             deadline_at=self._extract_deadline(soup),
+            company_type_signals=self._extract_company_type_signals(soup),
         )
+
+    def _extract_company_type_signals(self, soup: BeautifulSoup) -> dict:
+        """'기업형태' dt/dd 블록에서 태그 목록 추출 (예: 코스닥, 중견기업, 외부감사법인)."""
+        for dt in soup.find_all("dt"):
+            if dt.get_text(strip=True) != "기업형태":
+                continue
+            dd = dt.find_next_sibling("dd")
+            if not dd:
+                continue
+            raw = dd.get("title") or dd.get_text(strip=True)
+            tags = [t.strip() for t in raw.split(",") if t.strip()]
+            return {"company_type_tags": tags}
+        return {}
 
     _DEADLINE_FORMATS = ("%Y.%m.%d %H:%M", "%Y.%m.%d")
     _DEADLINE_RE = re.compile(r"(\d{4})[.\-/](\d{2})[.\-/](\d{2})")

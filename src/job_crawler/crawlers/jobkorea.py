@@ -159,7 +159,24 @@ class JobkoreaCrawler(BaseCrawler):
             body_text=body_text[:20000],
             body_raw=html[:50000],
             experience=meta.get("experience"),
+            company_type_signals=self._extract_company_type_signals(html),
         )
+
+    _COMPANY_TYPE_RE = re.compile(r'"companyTypeName":"([^"]*)"')
+    _FOREIGN_RE = re.compile(r'"foreign":(true|false)')
+
+    def _extract_company_type_signals(self, html: str) -> dict:
+        """Next.js RSC 스트리밍 데이터(script)에 박힌 회사 정보 JSON에서 추출.
+        body_raw(50000자 컷) 저장 전 원본 html 전체를 대상으로 검색해야 잡힌다
+        (companyTypeName 위치가 5만자 이후인 경우가 많음)."""
+        m = self._COMPANY_TYPE_RE.search(html)
+        f = self._FOREIGN_RE.search(html)
+        signals: dict = {}
+        if m:
+            signals["company_type_name"] = m.group(1)
+        if f:
+            signals["foreign"] = f.group(1) == "true"
+        return signals
 
     async def _fetch_description(self, html: str, external_id: str) -> str:
         """GI_Read SSR HTML의 Next.js 데이터에서 S3 pre-signed 상세 URL을 찾아 내용 조회."""

@@ -6,7 +6,7 @@ import pytest
 
 from job_crawler.crawlers.base import JobSummary
 from job_crawler.filters import criteria
-from job_crawler.filters.criteria import extract_position, pass_filters
+from job_crawler.filters.criteria import extract_position, pass_filters, target_tier
 
 
 @pytest.mark.parametrize(
@@ -79,6 +79,38 @@ def test_pass_filters_catch_whitelist_skips_keyword(empty_settings):
     assert pass_filters(_summary("서비스 운영", company="넥슨", site="catch")) is True
     # 화이트리스트 밖 기업은 일반 필터 적용 → 키워드 없으면 탈락
     assert pass_filters(_summary("서비스 운영", company="무명회사", site="catch")) is False
+
+
+@pytest.mark.parametrize(
+    "company,title,expected",
+    [
+        # 1순위: 금융사 IT 직고용
+        ("현대캐피탈", "백엔드 개발자", "1"),
+        ("JB우리캐피탈", "IT기획 개발", "1"),
+        ("SBI저축은행", "자바 개발자", "1"),
+        ("삼성화재해상보험", "IT 개발", "1"),
+        ("신한카드", "백엔드 개발자", "1"),
+        # 2순위: 금융지주 IT 자회사와 대기업 IT
+        ("하나금융티아이", "채널계 개발", "2"),
+        ("우리에프아이에스", "백엔드 개발자", "2"),
+        ("LG CNS", "금융 SI 개발", "2"),
+        ("현대오토에버", "백엔드 개발자", "2"),
+        # 3순위: 인터넷은행 도메인 명시 포지션만
+        ("카카오뱅크", "여신 서버 개발자", "3"),
+        ("토스뱅크", "수신 백엔드 개발자", "3"),
+        # 인터넷은행이라도 플랫폼/공통 포지션은 보류
+        ("카카오뱅크", "플랫폼 서버 개발자", "hold"),
+        ("케이뱅크", "공통 개발", "hold"),
+        # 보류: 대규모 트래픽/MSA 중심 회사 유형
+        ("카카오페이", "서버 개발자", "hold"),
+        ("트래블월렛", "백엔드 개발자", "hold"),
+        # 타겟 외
+        ("네이버", "백엔드 개발자", ""),
+        ("무명스타트업", "백엔드 개발자", ""),
+    ],
+)
+def test_target_tier(company, title, expected):
+    assert target_tier(company, title) == expected
 
 
 def test_pass_filters_position_whitelist(empty_settings):

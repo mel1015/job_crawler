@@ -47,6 +47,11 @@ class Job(Base):
     # doc_passed|doc_rejected|interview|final_passed|final_rejected
     application_status: Mapped[str | None] = mapped_column(String(16))
     is_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 대기업|중견기업|중소기업|공기업|외국계|스타트업|금융업|None(미분류)
+    # filters/company_type.py의 normalize_company_type() 결과
+    company_type: Mapped[str | None] = mapped_column(String(16))
+    # 정규화 이전 사이트별 원본 신호. 라벨 규칙이 바뀌어도 재크롤 없이 재정규화 가능하게 보존
+    company_type_signals: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

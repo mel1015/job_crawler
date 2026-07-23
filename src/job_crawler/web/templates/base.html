@@ -312,6 +312,12 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .badge.site-remember { background: #2a1a1e; color: #fda4af; }
 .badge.site-manual { background: #232836; color: #cbd5e1; }
 .badge.pos { background: var(--surface3); color: var(--fg2); border: 1px solid var(--border); text-transform: none; font-weight: 600; }
+/* 지원 타겟 우선순위 (기술보강_실행계획 1장) */
+.badge.tier-1 { background: #12301f; color: #4ade80; text-transform: none; }
+.badge.tier-2 { background: #12283e; color: #38bdf8; text-transform: none; }
+.badge.tier-3 { background: #2c2410; color: #facc15; text-transform: none; }
+.badge.tier-hold { background: #331616; color: #f87171; text-transform: none; }
+.badge.company-type { background: var(--surface3); color: var(--mute); border: 1px solid var(--border); text-transform: none; font-weight: 600; }
 
 .chip {
   display: inline-block; padding: 3px 10px; border-radius: 6px;
@@ -398,11 +404,11 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .body-content .sec-icon { margin-right: 6px; }
 .body-content .body-list { margin: 8px 0; padding-left: 0; list-style: none; }
 .body-content .body-list li {
-  position: relative; padding: 6px 12px 6px 24px; margin: 4px 0;
-  background: var(--surface2); border-radius: 6px; font-size: 13px; line-height: 1.6;
+  position: relative; padding: 2px 0 2px 18px; margin: 2px 0;
+  font-size: 13px; line-height: 1.6;
 }
 .body-content .body-list li::before {
-  content: ''; position: absolute; left: 10px; top: 14px;
+  content: ''; position: absolute; left: 4px; top: 10px;
   width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
 }
 .body-content .body-spacer { height: 8px; }
