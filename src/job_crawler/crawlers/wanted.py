@@ -179,7 +179,19 @@ class WantedCrawler(BaseCrawler):
             salary=None,  # 원티드는 원문에 보상금 표기만
             tech_stack=[t for t in tech_stack if t],
             deadline_at=_parse_dt(job.get("due_time")),
+            company_type_signals=_extract_company_type_signals(job),
         )
+
+
+def _extract_company_type_signals(job: dict[str, Any]) -> dict:
+    """company_tags 중 COMPANY_MANAGEMENT 종류의 사원수 태그(예: '51~300명')를 찾는다."""
+    for tag in job.get("company_tags") or []:
+        if tag.get("kind_title") != "COMPANY_MANAGEMENT":
+            continue
+        title = tag.get("title") or ""
+        if "명" in title:
+            return {"employee_count_tag": title}
+    return {}
 
 
 def _parse_dt(value: Any) -> datetime | None:

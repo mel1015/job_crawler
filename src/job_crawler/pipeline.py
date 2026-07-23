@@ -13,6 +13,7 @@ from .crawlers.base import BaseCrawler, JobDetail, JobSummary, SearchCriteria
 from .crawlers.registry import ACTIVE_SITES, build_crawler
 from .db.models import CrawlRun, Job
 from .db.session import session_scope
+from .filters.company_type import normalize_company_type
 from .filters.criteria import pass_filters
 from .logging_setup import setup_logging
 
@@ -108,6 +109,7 @@ def _mark_closed_jobs(site: str) -> int:
 
 def _upsert_job(detail: JobDetail) -> bool:
     s = detail.summary
+    company_type = normalize_company_type(s.site, s.company, detail.company_type_signals)
     with session_scope() as session:
         existing = session.execute(
             select(Job).where(Job.site == s.site, Job.external_id == s.external_id)
@@ -150,6 +152,10 @@ def _upsert_job(detail: JobDetail) -> bool:
                 existing.image_urls = detail.image_urls
             if detail.deadline_at is not None:
                 existing.deadline_at = detail.deadline_at
+            if company_type is not None:
+                existing.company_type = company_type
+            if detail.company_type_signals:
+                existing.company_type_signals = detail.company_type_signals
             return False
         job = Job(
             site=s.site,
@@ -167,6 +173,8 @@ def _upsert_job(detail: JobDetail) -> bool:
             body_raw=detail.body_raw,
             deadline_at=detail.deadline_at,
             image_urls=detail.image_urls or None,
+            company_type=company_type,
+            company_type_signals=detail.company_type_signals or None,
         )
         session.add(job)
         return True

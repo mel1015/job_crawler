@@ -140,7 +140,20 @@ class RememberCrawler(BaseCrawler):
             body_raw=str(data)[:50000],
             experience=_fmt_years(item.get("min_experience"), item.get("max_experience")),
             deadline_at=_parse_dt(item.get("ends_at")),
+            company_type_signals=_extract_company_type_signals(item),
         )
+
+
+def _extract_company_type_signals(item: dict[str, Any]) -> dict:
+    org = item.get("organization") or {}
+    industries = item.get("industries") or []
+    investment = (item.get("company") or {}).get("investment") or {}
+    return {
+        # 헤드헌팅/서치펌 대행 공고는 organization이 실제 고용주가 아님
+        "is_headhunter": bool(org.get("headhunter")),
+        "industries_level1": [i.get("level1") for i in industries if i.get("level1")],
+        "investment_value": investment.get("value"),
+    }
 
 
 def _parse_dt(value: Any) -> datetime | None:

@@ -12,9 +12,15 @@ from sqlalchemy.orm import defer, joinedload
 
 from ...db.models import Job, ScoreResult
 from ...db.session import session_scope
+from ...filters.criteria import target_tier
 from ..templating import templates
 
 router = APIRouter()
+
+VALID_TIERS = {"1", "2", "3", "hold", "none"}
+
+COMPANY_TYPES = ["대기업", "중견기업", "중소기업", "공기업", "외국계", "스타트업", "금융업"]
+VALID_COMPANY_TYPES = set(COMPANY_TYPES) | {"none"}
 
 PAGE_SIZE = 50
 
@@ -33,12 +39,16 @@ def index(
     site: str | None = Query(None),
     min_rate: str | None = Query(None),
     status: str | None = Query(None, description="scored | unscored | applied | ignored | closed"),
+    tier: str | None = Query(None, description="1 | 2 | 3 | hold | none"),
+    company_type: str | None = Query(None, description="대기업 | 중견기업 | ... | none(미분류)"),
     q: str | None = Query(None),
     sort: str = Query("rate", description="latest | rate"),
     page: int = Query(1, ge=1),
 ):
     site = site or None
     status = status or None
+    tier = tier if tier in VALID_TIERS else None
+    company_type = company_type if company_type in VALID_COMPANY_TYPES else None
     q = q or None
     min_rate_val: int | None
     try:
@@ -114,6 +124,13 @@ def index(
 
         if site:
             jobs = [j for j in jobs if j.site == site]
+        if tier:
+            # "none": 타겟 외 공고만 (1장 우선순위에 해당하지 않는 공고)
+            want = "" if tier == "none" else tier
+            jobs = [j for j in jobs if target_tier(j.company, j.title) == want]
+        if company_type:
+            want_type = None if company_type == "none" else company_type
+            jobs = [j for j in jobs if j.company_type == want_type]
         if q:
             ql = q.lower()
             jobs = [
@@ -154,6 +171,8 @@ def index(
                 ("site", site or ""),
                 ("min_rate", min_rate_val if min_rate_val is not None else ""),
                 ("status", status or ""),
+                ("tier", tier or ""),
+                ("company_type", company_type or ""),
                 ("q", q or ""),
                 ("sort", sort),
             )
@@ -167,6 +186,7 @@ def index(
             {
                 "jobs": jobs,
                 "sites": sites,
+                "company_types": COMPANY_TYPES,
                 "stats": stats,
                 "now": now,
                 "filtered_count": filtered_count,
@@ -179,6 +199,8 @@ def index(
                     "site": site or "",
                     "min_rate": min_rate_val if min_rate_val is not None else "",
                     "status": status or "",
+                    "tier": tier or "",
+                    "company_type": company_type or "",
                     "q": q or "",
                     "sort": sort,
                 },

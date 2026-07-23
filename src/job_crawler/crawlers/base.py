@@ -28,6 +28,9 @@ class JobSummary:
     company: str
     location: str | None = None
     posted_at: datetime | None = None
+    # 기업유형 판정 원본 신호 (사이트별 상이). 검색 목록 응답에만 있는 필드
+    # (catch의 GroupName/PopularCategory 등)를 상세조회 단계까지 들고가기 위함.
+    company_type_signals: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -41,6 +44,8 @@ class JobDetail:
     tech_stack: list[str] = field(default_factory=list)
     deadline_at: datetime | None = None
     image_urls: list[str] = field(default_factory=list)
+    # summary.company_type_signals + 상세 페이지에서 추가로 얻은 신호 병합
+    company_type_signals: dict = field(default_factory=dict)
 
 
 class BaseCrawler(ABC):
