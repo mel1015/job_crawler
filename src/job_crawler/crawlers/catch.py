@@ -105,6 +105,12 @@ class CatchCrawler(BaseCrawler):
             company=it.get("CompName") or "알수없음",
             location=it.get("WorkArea"),
             posted_at=_parse_dt(it.get("ApplyStartDatetime")),
+            # 기업유형 신호(GroupName/PopularCategory)는 검색 목록 응답에만 있고
+            # 상세 API(controls/recruitDetail)엔 없어 여기서 미리 담아둔다.
+            company_type_signals={
+                "group_name": it.get("GroupName"),
+                "popular_category": it.get("PopularCategory"),
+            },
         )
 
     async def fetch_detail(self, summary: JobSummary) -> JobDetail:
@@ -116,8 +122,17 @@ class CatchCrawler(BaseCrawler):
             body_text, image_urls = _extract_body_and_images(r.text)
         except httpx.HTTPError as e:
             logger.error(f"catch detail failed {summary.external_id}: {e}")
-            return JobDetail(summary=summary, body_text="")
-        return JobDetail(summary=summary, body_text=body_text[:20000], image_urls=image_urls)
+            return JobDetail(
+                summary=summary,
+                body_text="",
+                company_type_signals=summary.company_type_signals,
+            )
+        return JobDetail(
+            summary=summary,
+            body_text=body_text[:20000],
+            image_urls=image_urls,
+            company_type_signals=summary.company_type_signals,
+        )
 
 
 _CATCH_BASE = "https://www.catch.co.kr"

@@ -65,6 +65,27 @@
     </select>
   </div>
   <div class="field">
+    <span class="ic">🎯</span>
+    <select name="tier" onchange="this.form.submit()">
+      <option value="">지원 타겟</option>
+      <option value="1" {% if filters.tier == '1' %}selected{% endif %}>1순위 금융사</option>
+      <option value="2" {% if filters.tier == '2' %}selected{% endif %}>2순위 금융IT</option>
+      <option value="3" {% if filters.tier == '3' %}selected{% endif %}>3순위 도메인</option>
+      <option value="hold" {% if filters.tier == 'hold' %}selected{% endif %}>지원 보류</option>
+      <option value="none" {% if filters.tier == 'none' %}selected{% endif %}>타겟 외</option>
+    </select>
+  </div>
+  <div class="field">
+    <span class="ic">🏢</span>
+    <select name="company_type" onchange="this.form.submit()">
+      <option value="">기업유형</option>
+      {% for ct in company_types %}
+      <option value="{{ ct }}" {% if filters.company_type == ct %}selected{% endif %}>{{ ct }}</option>
+      {% endfor %}
+      <option value="none" {% if filters.company_type == 'none' %}selected{% endif %}>미분류</option>
+    </select>
+  </div>
+  <div class="field">
     <span class="ic">%</span>
     <input type="number" name="min_rate" min="0" max="100" value="{{ filters.min_rate }}" placeholder="최소">
   </div>
@@ -79,7 +100,7 @@
   <span class="count"><span class="n">{{ filtered_count }}</span> / {{ stats.total }}건</span>
 </form>
 
-{% set has_filter = filters.q or filters.site or filters.status or filters.min_rate %}
+{% set has_filter = filters.q or filters.site or filters.status or filters.min_rate or filters.tier or filters.company_type %}
 {% if has_filter %}
 <div class="active-filters">
   <span class="af-label">적용된 필터:</span>
@@ -87,6 +108,8 @@
   {% if filters.site %}<span class="af-chip">{{ filters.site | upper }}</span>{% endif %}
   {% set status_labels = {'scored': '평가완료', 'unscored': '미평가', 'applied': '지원완료', 'doc_passed': '서류합격', 'doc_rejected': '서류탈락', 'interview': '면접', 'final_passed': '최종합격', 'final_rejected': '최종탈락', 'ignored': '관심없음', 'closed': '마감'} %}
   {% if filters.status %}<span class="af-chip">{{ status_labels.get(filters.status, filters.status) }}</span>{% endif %}
+  {% if filters.tier %}<span class="af-chip">{{ TARGET_TIER_LABELS.get(filters.tier, '타겟 외') }}</span>{% endif %}
+  {% if filters.company_type %}<span class="af-chip">{{ '미분류' if filters.company_type == 'none' else filters.company_type }}</span>{% endif %}
   {% if filters.min_rate %}<span class="af-chip">합격률 ≥ {{ filters.min_rate }}%</span>{% endif %}
   <a href="/" class="af-reset">전체 초기화</a>
 </div>
@@ -95,6 +118,7 @@
 <div class="job-list">
 {% for j in jobs %}
   {% set pos = extract_position(j.title) %}
+  {% set tier = target_tier(j.company, j.title) %}
   {% set is_new = j.first_seen_at and (now - j.first_seen_at).total_seconds() < 86400 %}
   <div class="job-card {% if j.is_ignored %}st-ignored{% elif j.application_status %}st-{{ j.application_status }}{% elif j.is_applied %}st-applied{% endif %}"
        onclick="if(!event.target.closest('button,a,select,.score-pill,.spinner,.expand-btn'))location.href='/jobs/{{ j.id }}'" style="cursor:pointer;">
@@ -103,6 +127,8 @@
         <div class="title-line">
           <span class="badge site-{{ j.site }}">{{ j.site | upper }}</span>
           {% if pos %}<span class="badge pos">{{ pos }}</span>{% endif %}
+          {% if tier %}<span class="badge tier-{{ tier }}">{{ TARGET_TIER_LABELS[tier] }}</span>{% endif %}
+          {% if j.company_type %}<span class="badge company-type">{{ j.company_type }}</span>{% endif %}
           {% if is_new %}<span class="badge new-badge">NEW</span>{% endif %}
           <a href="/jobs/{{ j.id }}">{{ j.title }}</a>
         </div>

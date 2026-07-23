@@ -106,6 +106,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
   - `application_status`: 지원 후 전형 단계. `None`=결과대기, `doc_passed`/`doc_rejected`/`interview`/`final_passed`/`final_rejected`. `is_applied=True`일 때만 의미
   - `is_ignored`: 관심없음 표시 (기본 목록에서 숨김 — `status=ignored` 필터로만 열람)
   - 위 세 필드는 카드의 전형 상태 드롭다운(`_application_status.html`) 하나로 통합 제어 (컨트롤 분산 시 모순 상태 방지)
+  - `company_type`: 대기업/중견기업/중소기업/공기업/외국계/스타트업/금융업/`None`(미분류) 단일 라벨. `company_type_signals`(JSON): 정규화 이전 사이트별 원본 신호 보존(라벨 규칙 변경 시 재크롤 없이 `filters/company_type.py`의 `normalize_company_type()`만 재실행하면 재분류 가능)
 - `ScoreResult`: 합격률 평가 결과 (`match_rate`, `verdict`, `strengths`, `gaps`, `red_flags`, `action_tip`, `model`). `model='claude-code'` 고정
 - `CrawlRun`: 실행 이력 (`site`, `fetched`, `new_jobs`, `status`, `errors`)
 
@@ -115,6 +116,21 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 - `b2c3d4e5f6a7_add_is_applied_to_jobs.py`: `is_applied` Boolean 컬럼 추가
 - `c3d4e5f6a7b8_add_is_ignored_to_jobs.py`: `is_ignored` Boolean 컬럼 추가
 - `d4e5f6a7b8c9_add_application_status_to_jobs.py`: `application_status` String 컬럼 추가 (전형 단계)
+- `e5f6a7b8c9d0_add_company_type_to_jobs.py`: `company_type`/`company_type_signals` 컬럼 추가 (기업유형)
+
+> **기업유형 분류** (`filters/company_type.py`): catch/saramin/jobkorea/remember/wanted 5개 사이트는 자체적으로
+> 기업유형에 준하는 데이터를 갖고 있어(catch `GroupName`/`PopularCategory`, saramin 상세페이지 `기업형태` dt/dd,
+> jobkorea RSC JSON의 `companyTypeName`/`foreign`, remember `industries[].level1`/`company.investment`,
+> wanted `company_tags`의 사원수 태그) 회사명 추측이 아니라 원본 신호를 각 크롤러가 추출해 `JobSummary`/`JobDetail`의
+> `company_type_signals`에 담고, `pipeline._upsert_job`이 `normalize_company_type(site, company, signals)`로
+> 정규화해 저장한다. jumpit은 대응 신호를 찾지 못해 항상 미분류.
+> **remember 헤드헌팅 대행 공고 주의**: `organization`이 실제 고용주가 아니라 서치펌(유니코써치·프로써치코리아 등)
+> 정보인 경우가 있어(`organization.headhunter=True`) 이 신호로 분류하면 오분류 — 헤드헌터 대행 공고는 항상 미분류 처리.
+> **catch는 검색 목록 API에만 신호가 있고 상세 API(`controls/recruitDetail`)엔 없어** `_parse_summary`에서 미리
+> 캡처해 `JobSummary.company_type_signals`로 들고가야 함 (상세조회 단계에서 재추출 불가).
+> **기존 크롤 데이터 백필 불가**: 이 기능 추가 이전에 크롤된 공고(약 7900건)는 원본 신호 자체가 저장 안 돼 있어
+> (catch는 애초에 미저장, saramin/jobkorea는 `body_raw` 5만자 컷 밖에 위치) 백필 불가 — 전부 미분류로 두고
+> 이 기능 추가 이후 크롤분부터 적용됨. 재크롤해도 catch는 이미 마감된 공고를 검색 API가 안 돌려줘 복구 불가.
 
 ### 합격률 평가 (`scoring/`)
 
@@ -186,6 +202,8 @@ FastAPI + Jinja2 + HTMX. 라우터:
 
 > **주의**: `is_ignored` 필터링은 DB 쿼리가 아닌 Python 리스트 단계에서 처리. `status=ignored`일 때 ignored=True, 그 외엔 ignored=False 공고만 노출. DB 쿼리에서 `is_ignored==False` 조건을 넣으면 "관심없음 보기"가 영원히 빈 리스트가 됨.
 
+`company_type` 파라미터: 대기업/중견기업/중소기업/공기업/외국계/스타트업/금융업 중 하나, 또는 미분류만 보는 `none`. `tier`와 동일하게 Python 리스트 단계에서 필터링.
+
 ### 설정 (`config.py`)
 
 `pydantic-settings` 기반, `.env` 파일 로드. `get_settings()` 로 싱글톤 접근.
@@ -223,3 +241,4 @@ class MySiteCrawler(BaseCrawler):
 | 상세에서 마감/상태 변경 후 뒤로가기 시 목록 반영 안 됨 | 브라우저 bfcache가 옛 목록 복원 → `base.html` `pageshow` 핸들러가 `e.persisted`/nav type=`back_forward`면 `location.reload()` |
 | remember에서 특정 회사(토스 등) 공고가 안 잡힘 | ① 회사가 영문 제목(`Server Developer` 등) 사용 시 `DESIRED_ROLES`에 대응 영문 키워드 누락 여부 확인 ② `crawlers/remember.py`가 `min_experience`/`max_experience`를 API에 보내면 경력 미설정(`None`) 공고가 통째로 결과에서 빠지는 remember API 버그성 동작 있음 — remember는 경력 필터 전달 안 함(의도적) |
 | 루트에 세션 임시 파일/폴더가 git status에 계속 남음 | `scheduler.py`의 자동분석 cleanup(`_run_analysis` finally 블록)은 `_*`/`*_tmp.py`/`tmp_*` 패턴만 정리하고 그 외 이름은 안 지워짐 — 세션에서 임시 파일 만들 때 반드시 이 패턴 중 하나로 명명 (또는 이미지 다운로드처럼 프로젝트 밖 시스템 `/tmp/` 사용) |
+| 수동 등록(`/jobs/new`) 공고 본문이 상세 페이지에서 리스트/헤더 없이 뭉개져 보임 | `body_formatter.py`의 `format_body_html()`은 줄 단위 정규식 매칭이라 형식이 엄격함: 섹션 헤더는 `[제목]`이 **그 줄에 단독**으로 있어야 함(`[필수 사항] 이런 분과...`처럼 뒤에 텍스트가 붙으면 매칭 실패해 일반 문단으로 렌더링), 리스트 항목은 `•·-*▪▸►◦‧` 또는 `숫자.`/`숫자)`로 시작해야 함(`. 은행:`처럼 점만 있으면 리스트가 끊기고 `<ul>`이 닫힘). 수동 공고 body_text 작성 시 헤더는 별도 줄, 하위 항목도 반드시 인식되는 불릿 문자(`-` 등)로 통일 |
