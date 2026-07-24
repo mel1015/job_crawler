@@ -21,6 +21,11 @@ from .scoring.contract import build_analysis_prompt
 # 리포지토리 루트 (이 파일 기준 4단계 상위)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# 자동분석 재검사 창(일). 하루 2회(09/19시) 주기로 최대 이만큼 재시도 기회를 준다 —
+# 1일로 좁으면 특정 회차의 claude -p가 무진행(조기종료 등)으로 실패했을 때
+# 다음 회차부터 재검사 대상에서 벗어나 영구 방치된다 (2026-07-23 09시 회차 실사례).
+_ANALYSIS_LOOKBACK_DAYS = 3
+
 
 def _run_analysis() -> None:
     """크롤 완료 후 Claude Code CLI로 미평가 공고 자동 분석."""
@@ -29,7 +34,7 @@ def _run_analysis() -> None:
         logger.warning("claude CLI not found — skipping auto-analysis")
         return
 
-    unscored = count_unscored_jobs(days=1)
+    unscored = count_unscored_jobs(days=_ANALYSIS_LOOKBACK_DAYS)
     if unscored == 0:
         logger.info("auto-analysis: 미평가 공고 없음, 스킵")
         return
@@ -45,7 +50,7 @@ def _run_analysis() -> None:
                 model,
                 "--effort",
                 effort,
-                build_analysis_prompt(days=1, limit=min(unscored, 50)),
+                build_analysis_prompt(days=_ANALYSIS_LOOKBACK_DAYS, limit=min(unscored, 50)),
             ],
             cwd=str(_REPO_ROOT),
             timeout=timeout_sec,
@@ -54,11 +59,14 @@ def _run_analysis() -> None:
         )
         # 분석 후 미평가 잔량을 다시 세어 실제 진행분(저장 건수)을 추정 — rc=0이어도
         # 한 건도 저장 안 되는 무진행 케이스를 조기 감지.
-        remaining = count_unscored_jobs(days=1)
+        remaining = count_unscored_jobs(days=_ANALYSIS_LOOKBACK_DAYS)
         scored = max(unscored - remaining, 0)
         if result.returncode == 0:
             if scored == 0:
-                logger.warning(f"auto-analysis: rc=0이나 저장 0건 (잔량 {remaining}) — 무진행 의심")
+                logger.warning(
+                    f"auto-analysis: rc=0이나 저장 0건 (잔량 {remaining}) — 무진행 의심\n"
+                    f"stdout: {result.stdout[:500]}\nstderr: {result.stderr[:500]}"
+                )
             else:
                 logger.info(f"auto-analysis: 완료 — {scored}건 평가, 잔량 {remaining}")
         else:

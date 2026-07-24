@@ -58,7 +58,7 @@ pytest tests/test_resume_loader.py  # 단일 파일
 
 프로젝트 로컬 슬래시 명령. Claude Code 세션에서 `/crawl`, `/analyze`, `/check-daemon` 으로 호출.
 
-`/crawl`, `/analyze`는 frontmatter에 `model: claude-sonnet-5`, `effort: xhigh`가 고정되어 세션 모델과 무관하게 해당 설정으로 실행됨 (frontmatter는 정적 YAML이라 env 참조 불가). `/analyze` 병렬 배치의 서브에이전트도 `model: "sonnet"`으로 호출. `jc-scheduler`의 자동분석(`_run_analysis`)은 `config.get_analysis_model_settings()`를 통해 `.env`의 `ANALYSIS_MODEL`/`ANALYSIS_EFFORT`/`ANALYSIS_TIMEOUT_SEC`(기본 claude-sonnet-5 / xhigh / 1800초)로 설정.
+`/crawl`, `/analyze`는 frontmatter에 `model: claude-sonnet-5`, `effort: xhigh`가 고정되어 세션 모델과 무관하게 해당 설정으로 실행됨 (frontmatter는 정적 YAML이라 env 참조 불가). `/analyze` 병렬 배치의 서브에이전트도 `model: "sonnet"`으로 호출. `jc-scheduler`의 자동분석(`_run_analysis`)은 `config.get_analysis_model_settings()`를 통해 `.env`의 `ANALYSIS_MODEL`/`ANALYSIS_EFFORT`/`ANALYSIS_TIMEOUT_SEC`(기본 claude-sonnet-5 / xhigh / 1800초)로 설정. 미평가 재검사 창은 `scheduler.py`의 `_ANALYSIS_LOOKBACK_DAYS`(기본 3일) — 특정 회차의 `claude -p`가 무진행으로 실패해도 이후 회차에서 최대 3일간 재시도 대상에 남도록 함.
 
 - `/crawl [limit=300] [--analyze]`: `jc-crawl --limit LIMIT` 실행 → 최근 30분 내 `CrawlRun` 이력을 사이트별로 조회해 fetched/new_jobs/status 요약 출력. `--analyze` 시 완료 후 `/analyze`(days=1)를 이어서 실행
 - `/analyze [days=7] [limit=전체건수]`: `count_unscored_jobs()` 로 미평가 건수 확인 → 0건이면 종료. limit 미지정 시 이 건수(N)를 그대로 사용해 전체를 조회(20건 초과는 병렬 배치가 규모를 흡수하므로 임의 상한 없음) → `build_analysis_prompt()` 로 출력된 절차(이력서 프로파일 비교·채점 규칙 적용·이미지 공고 시각 분석)를 따라 평가 → `save_claude_scores()` 저장 → 잔여 미평가 건수 재조회 후 보고
@@ -242,3 +242,4 @@ class MySiteCrawler(BaseCrawler):
 | remember에서 특정 회사(토스 등) 공고가 안 잡힘 | ① 회사가 영문 제목(`Server Developer` 등) 사용 시 `DESIRED_ROLES`에 대응 영문 키워드 누락 여부 확인 ② `crawlers/remember.py`가 `min_experience`/`max_experience`를 API에 보내면 경력 미설정(`None`) 공고가 통째로 결과에서 빠지는 remember API 버그성 동작 있음 — remember는 경력 필터 전달 안 함(의도적) |
 | 루트에 세션 임시 파일/폴더가 git status에 계속 남음 | `scheduler.py`의 자동분석 cleanup(`_run_analysis` finally 블록)은 `_*`/`*_tmp.py`/`tmp_*` 패턴만 정리하고 그 외 이름은 안 지워짐 — 세션에서 임시 파일 만들 때 반드시 이 패턴 중 하나로 명명 (또는 이미지 다운로드처럼 프로젝트 밖 시스템 `/tmp/` 사용) |
 | 수동 등록(`/jobs/new`) 공고 본문이 상세 페이지에서 리스트/헤더 없이 뭉개져 보임 | `body_formatter.py`의 `format_body_html()`은 줄 단위 정규식 매칭이라 형식이 엄격함: 섹션 헤더는 `[제목]`이 **그 줄에 단독**으로 있어야 함(`[필수 사항] 이런 분과...`처럼 뒤에 텍스트가 붙으면 매칭 실패해 일반 문단으로 렌더링), 리스트 항목은 `•·-*▪▸►◦‧` 또는 `숫자.`/`숫자)`로 시작해야 함(`. 은행:`처럼 점만 있으면 리스트가 끊기고 `<ul>`이 닫힘). 수동 공고 body_text 작성 시 헤더는 별도 줄, 하위 항목도 반드시 인식되는 불릿 문자(`-` 등)로 통일 |
+| `jc-analyze`로는 미평가 건수가 잡히는데 자동분석 회차가 계속 "잔량 0"으로 끝남 (공고가 방치됨) | `scheduler.py`의 자동분석 재검사는 `_ANALYSIS_LOOKBACK_DAYS`(기본 3일) 이내 공고만 대상으로 함 — 특정 회차의 `claude -p`가 rc=0인데 저장 0건("무진행 의심" 경고, `data/scheduler.err`에서 확인 가능)으로 실패한 뒤 그 공고들이 이 창을 벗어나면 이후 회차 자동 재시도 대상에서 빠짐. `jc-analyze --days 7`(또는 그 이상)로 수동 확인 후 `/analyze`로 직접 채점 필요 |
