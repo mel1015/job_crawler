@@ -27,9 +27,23 @@ PAGE_SIZE = 50
 VALID_APP_STATUSES = {
     "doc_passed",
     "doc_rejected",
-    "interview",
+    "coding_test",
+    "job_interview",
+    "exec_interview",
     "final_passed",
     "final_rejected",
+}
+
+# "지원완료" 필터 전용 정렬 우선순위 (낮을수록 먼저 표시). 결과대기(None)는 서류합격 바로 앞에 배치
+APP_STATUS_ORDER = {
+    "final_passed": 0,
+    "exec_interview": 1,
+    "job_interview": 2,
+    "coding_test": 3,
+    None: 4,
+    "doc_passed": 5,
+    "final_rejected": 6,
+    "doc_rejected": 7,
 }
 
 
@@ -143,7 +157,21 @@ def index(
         if min_rate_val is not None:
             jobs = [j for j in jobs if j.score and (j.score.match_rate or 0) >= min_rate_val]
 
-        if sort == "rate":
+        if status == "applied":
+            # 전형 단계 우선순위로 1차 정렬 후, 같은 단계 내에서는 기존 정렬 기준을 유지
+            if sort == "rate":
+                jobs.sort(
+                    key=lambda j: (
+                        j.score.match_rate
+                        if j.score and j.score.match_rate is not None
+                        else -1
+                    ),
+                    reverse=True,
+                )
+            else:
+                jobs.sort(key=lambda j: j.first_seen_at, reverse=True)
+            jobs.sort(key=lambda j: APP_STATUS_ORDER.get(j.application_status, 99))
+        elif sort == "rate":
             jobs.sort(
                 key=lambda j: (
                     j.score.match_rate

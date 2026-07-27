@@ -57,7 +57,9 @@
       <option value="applied" {% if filters.status == 'applied' %}selected{% endif %}>지원완료</option>
       <option value="doc_passed" {% if filters.status == 'doc_passed' %}selected{% endif %}>　서류합격</option>
       <option value="doc_rejected" {% if filters.status == 'doc_rejected' %}selected{% endif %}>　서류탈락</option>
-      <option value="interview" {% if filters.status == 'interview' %}selected{% endif %}>　면접</option>
+      <option value="coding_test" {% if filters.status == 'coding_test' %}selected{% endif %}>　코딩테스트</option>
+      <option value="job_interview" {% if filters.status == 'job_interview' %}selected{% endif %}>　직무면접</option>
+      <option value="exec_interview" {% if filters.status == 'exec_interview' %}selected{% endif %}>　임원면접</option>
       <option value="final_passed" {% if filters.status == 'final_passed' %}selected{% endif %}>　최종합격</option>
       <option value="final_rejected" {% if filters.status == 'final_rejected' %}selected{% endif %}>　최종탈락</option>
       <option value="ignored" {% if filters.status == 'ignored' %}selected{% endif %}>관심없음</option>
@@ -106,7 +108,7 @@
   <span class="af-label">적용된 필터:</span>
   {% if filters.q %}<span class="af-chip">검색: {{ filters.q }}</span>{% endif %}
   {% if filters.site %}<span class="af-chip">{{ filters.site | upper }}</span>{% endif %}
-  {% set status_labels = {'scored': '평가완료', 'unscored': '미평가', 'applied': '지원완료', 'doc_passed': '서류합격', 'doc_rejected': '서류탈락', 'interview': '면접', 'final_passed': '최종합격', 'final_rejected': '최종탈락', 'ignored': '관심없음', 'closed': '마감'} %}
+  {% set status_labels = {'scored': '평가완료', 'unscored': '미평가', 'applied': '지원완료', 'doc_passed': '서류합격', 'doc_rejected': '서류탈락', 'coding_test': '코딩테스트', 'job_interview': '직무면접', 'exec_interview': '임원면접', 'final_passed': '최종합격', 'final_rejected': '최종탈락', 'ignored': '관심없음', 'closed': '마감'} %}
   {% if filters.status %}<span class="af-chip">{{ status_labels.get(filters.status, filters.status) }}</span>{% endif %}
   {% if filters.tier %}<span class="af-chip">{{ TARGET_TIER_LABELS.get(filters.tier, '타겟 외') }}</span>{% endif %}
   {% if filters.company_type %}<span class="af-chip">{{ '미분류' if filters.company_type == 'none' else filters.company_type }}</span>{% endif %}

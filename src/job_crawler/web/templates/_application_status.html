@@ -11,7 +11,9 @@
     <option value="applied" {% if job.is_applied and not job.application_status and not job.is_ignored %}selected{% endif %}>지원·결과대기</option>
     <option value="doc_passed" {% if job.application_status == 'doc_passed' and not job.is_ignored %}selected{% endif %}>서류합격</option>
     <option value="doc_rejected" {% if job.application_status == 'doc_rejected' and not job.is_ignored %}selected{% endif %}>서류탈락</option>
-    <option value="interview" {% if job.application_status == 'interview' and not job.is_ignored %}selected{% endif %}>면접</option>
+    <option value="coding_test" {% if job.application_status == 'coding_test' and not job.is_ignored %}selected{% endif %}>코딩테스트</option>
+    <option value="job_interview" {% if job.application_status == 'job_interview' and not job.is_ignored %}selected{% endif %}>직무면접</option>
+    <option value="exec_interview" {% if job.application_status == 'exec_interview' and not job.is_ignored %}selected{% endif %}>임원면접</option>
     <option value="final_passed" {% if job.application_status == 'final_passed' and not job.is_ignored %}selected{% endif %}>최종합격</option>
     <option value="final_rejected" {% if job.application_status == 'final_rejected' and not job.is_ignored %}selected{% endif %}>최종탈락</option>
     <option value="ignored" {% if job.is_ignored %}selected{% endif %}>관심없음</option>
