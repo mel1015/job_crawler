@@ -103,7 +103,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 모델:
 - `Job`: 공고 본문 (`body_text`, `body_raw`), `is_closed`, `is_applied`, `application_status`, `is_ignored`, `last_seen_at`, `score_result` 관계
   - `is_applied`: 지원완료 표시 (기본 목록에 포함)
-  - `application_status`: 지원 후 전형 단계. `None`=결과대기, `doc_passed`/`doc_rejected`/`interview`/`final_passed`/`final_rejected`. `is_applied=True`일 때만 의미
+  - `application_status`: 지원 후 전형 단계. `None`=결과대기, `doc_passed`/`doc_rejected`/`coding_test`/`job_interview`/`exec_interview`/`final_passed`/`final_rejected`. `is_applied=True`일 때만 의미
   - `is_ignored`: 관심없음 표시 (기본 목록에서 숨김 — `status=ignored` 필터로만 열람)
   - 위 세 필드는 카드의 전형 상태 드롭다운(`_application_status.html`) 하나로 통합 제어 (컨트롤 분산 시 모순 상태 방지)
   - `company_type`: 대기업/중견기업/중소기업/공기업/외국계/스타트업/금융업/`None`(미분류) 단일 라벨. `company_type_signals`(JSON): 정규화 이전 사이트별 원본 신호 보존(라벨 규칙 변경 시 재크롤 없이 `filters/company_type.py`의 `normalize_company_type()`만 재실행하면 재분류 가능)
@@ -194,11 +194,17 @@ FastAPI + Jinja2 + HTMX. 라우터:
 대시보드 필터 (`status` 파라미터):
 - `scored` / `unscored`: 평가 완료/미평가
 - `applied`: `is_applied=True` 공고 (마감 여부 무관 — `is_closed` 무시)
-- `doc_passed`/`doc_rejected`/`interview`/`final_passed`/`final_rejected`: 전형 단계별 공고 (`application_status` 일치, 마감 여부 무관)
+- `doc_passed`/`doc_rejected`/`coding_test`/`job_interview`/`exec_interview`/`final_passed`/`final_rejected`: 전형 단계별 공고 (`application_status` 일치, 마감 여부 무관)
 - `ignored`: `is_ignored=True` 공고만 표시 (이 외 모든 상태에서는 `is_ignored=False` 공고만 표시)
 - `closed`: `is_closed=True` 공고만 별도 조회 (기본 목록은 `is_closed=False`라 미포함). 수동 마감/해제 공고 열람·복구용
 
 > **주의**: `applied`/전형 상태 필터에서는 `is_applied=True` 공고를 별도 쿼리로 조회 (`is_closed` 무시). stats 카운터는 항상 `is_closed=False` 기준으로 산출.
+
+> **`status=applied` 전형 단계 정렬** (`routers/jobs.py`의 `APP_STATUS_ORDER`): 지원완료 필터는 `sort`(최신순/합격률순) 이전에
+> 전형 단계 우선순위를 1차 정렬 기준으로 적용한다 — 최종합격 > 임원면접 > 직무면접 > 코딩테스트 > 결과대기(`None`) >
+> 서류합격 > 최종탈락 > 서류탈락. 개별 전형 단계 필터(`doc_passed` 등)는 모든 공고가 동일 단계라 이 정렬이 적용되지 않음.
+> `base.html`의 동일한 순서(`APP_STATUS_ORDER` JS 상수)로 드롭다운 변경 시 새로고침 없이 카드 위치를 즉시 재배치
+> (`applyCardStatus()` 마지막에 `reorderAppliedCard()` 호출, `?status=applied` 뷰에서만 동작).
 
 > **주의**: `is_ignored` 필터링은 DB 쿼리가 아닌 Python 리스트 단계에서 처리. `status=ignored`일 때 ignored=True, 그 외엔 ignored=False 공고만 노출. DB 쿼리에서 `is_ignored==False` 조건을 넣으면 "관심없음 보기"가 영원히 빈 리스트가 됨.
 
