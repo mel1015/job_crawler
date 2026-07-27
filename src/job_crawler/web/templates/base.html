@@ -6,6 +6,29 @@
 <title>{% block title %}job_crawler{% endblock %}</title>
 <script src="https://unpkg.com/htmx.org@2.0.3"></script>
 <script>
+// routers/jobs.py의 APP_STATUS_ORDER와 동일 (지원완료 필터 정렬 우선순위, 결과대기는 'applied' 클래스로 표현)
+const APP_STATUS_ORDER = {
+  final_passed: 0, exec_interview: 1, job_interview: 2, coding_test: 3,
+  applied: 4, doc_passed: 5, final_rejected: 6, doc_rejected: 7,
+};
+function appStatusRank(card) {
+  for (const cls of card.classList) {
+    if (cls.startsWith('st-') && cls.slice(3) in APP_STATUS_ORDER) return APP_STATUS_ORDER[cls.slice(3)];
+  }
+  return 99;
+}
+// 지원완료 필터 뷰에서는 전형 단계 변경 시 목록 내 위치도 서버 정렬 순서대로 즉시 재배치
+function reorderAppliedCard(card) {
+  if (new URLSearchParams(location.search).get('status') !== 'applied') return;
+  const list = card.parentElement;
+  if (!list || !list.classList.contains('job-list')) return;
+  const rank = appStatusRank(card);
+  const sibling = Array.from(list.children).find(
+    el => el !== card && el.classList.contains('job-card') && appStatusRank(el) > rank
+  );
+  if (sibling) list.insertBefore(card, sibling);
+  else list.appendChild(card);
+}
 // 전형 상태 드롭다운 변경 시 카드 색(st-* 클래스)을 즉시 반영. 서버 저장은 hx-post가 병행.
 function applyCardStatus(sel) {
   const card = sel.closest('.job-card');
@@ -20,6 +43,7 @@ function applyCardStatus(sel) {
     card.style.display = '';
     if (v && v !== 'not_applied') card.classList.add('st-' + v);
   }
+  reorderAppliedCard(card);
 }
 // 마감/마감해제 토글 시 현재 뷰와 안 맞으면 카드를 즉시 숨김 (DB 저장은 hx-post 병행).
 // 단 지원/전형 상태 필터는 is_closed를 무시하므로 그대로 둔다.
@@ -27,7 +51,7 @@ function hideCardOnClose(btn) {
   const card = btn.closest('.job-card');
   if (!card) return;
   const cur = new URLSearchParams(location.search).get('status');
-  const keep = ['applied','doc_passed','doc_rejected','interview','final_passed','final_rejected'].includes(cur);
+  const keep = ['applied','doc_passed','doc_rejected','coding_test','job_interview','exec_interview','final_passed','final_rejected'].includes(cur);
   if (!keep) card.style.display = 'none';
 }
 function toggleAnalysis(id) {
@@ -256,7 +280,9 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 /* 전형 상태별 카드 구분: 좌측 보더 색 + 배경 tint. 탈락·관심없음만 추가로 흐리게 */
 .job-card.st-applied        { border-left: 3px solid #3b82f6; background: rgba(59,130,246,.07); }
 .job-card.st-doc_passed     { border-left: 3px solid #14b8a6; background: rgba(20,184,166,.09); }
-.job-card.st-interview      { border-left: 3px solid #a855f7; background: rgba(168,85,247,.09); }
+.job-card.st-coding_test    { border-left: 3px solid #6366f1; background: rgba(99,102,241,.09); }
+.job-card.st-job_interview  { border-left: 3px solid #a855f7; background: rgba(168,85,247,.09); }
+.job-card.st-exec_interview { border-left: 3px solid #8b5cf6; background: rgba(139,92,246,.13); box-shadow: inset 0 0 0 1px rgba(139,92,246,.2); }
 .job-card.st-final_passed   { border-left: 3px solid #22c55e; background: rgba(34,197,94,.13); box-shadow: inset 0 0 0 1px rgba(34,197,94,.25); }
 .job-card.st-doc_rejected   { border-left: 3px solid #ef4444; background: rgba(239,68,68,.06); opacity: .5; }
 .job-card.st-final_rejected { border-left: 3px solid #b91c1c; background: rgba(185,28,28,.06); opacity: .45; }
