@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -58,6 +59,11 @@ class Job(Base):
     score: Mapped["ScoreResult | None"] = relationship(
         back_populates="job", uselist=False, cascade="all, delete-orphan"
     )
+    events: Mapped[list[ApplicationEvent]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="ApplicationEvent.event_date, ApplicationEvent.id",
+    )
 
 
 class ScoreResult(Base):
@@ -96,3 +102,18 @@ class CrawlRun(Base):
     new_jobs: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(16), default="running")  # running|ok|error
     errors: Mapped[list[Any] | None] = mapped_column(JSON)
+
+
+class ApplicationEvent(Base):
+    """공고별 전형 진행 이력. application_status와 무관한 순수 수동 기록."""
+
+    __tablename__ = "application_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(128))  # 자유입력, 프론트 datalist로 프리셋 제안
+    event_date: Mapped[date] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    job: Mapped[Job] = relationship(back_populates="events")

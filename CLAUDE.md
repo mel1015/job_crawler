@@ -109,6 +109,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
   - `company_type`: 대기업/중견기업/중소기업/공기업/외국계/스타트업/금융업/`None`(미분류) 단일 라벨. `company_type_signals`(JSON): 정규화 이전 사이트별 원본 신호 보존(라벨 규칙 변경 시 재크롤 없이 `filters/company_type.py`의 `normalize_company_type()`만 재실행하면 재분류 가능)
 - `ScoreResult`: 합격률 평가 결과 (`match_rate`, `verdict`, `strengths`, `gaps`, `red_flags`, `action_tip`, `model`). `model='claude-code'` 고정
 - `CrawlRun`: 실행 이력 (`site`, `fetched`, `new_jobs`, `status`, `errors`)
+- `ApplicationEvent`: 공고별 전형 진행 이력(지원일/면접일/결과발표일 등)을 수동 기록. `label`(자유입력, 프론트 datalist로 프리셋 제안)/`event_date`(Date)/`note`(선택)/`created_at`(기록 입력 시각). `Job.events` (`order_by=event_date, id`, `cascade="all, delete-orphan"`)
 
 마이그레이션 이력:
 - `866a1946d299_init.py`: 초기 스키마
@@ -117,6 +118,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 - `c3d4e5f6a7b8_add_is_ignored_to_jobs.py`: `is_ignored` Boolean 컬럼 추가
 - `d4e5f6a7b8c9_add_application_status_to_jobs.py`: `application_status` String 컬럼 추가 (전형 단계)
 - `e5f6a7b8c9d0_add_company_type_to_jobs.py`: `company_type`/`company_type_signals` 컬럼 추가 (기업유형)
+- `f6a7b8c9d0e1_add_application_events.py`: `application_events` 테이블 신설 (전형 타임라인)
 
 > **기업유형 분류** (`filters/company_type.py`): catch/saramin/jobkorea/remember/wanted 5개 사이트는 자체적으로
 > 기업유형에 준하는 데이터를 갖고 있어(catch `GroupName`/`PopularCategory`, saramin 상세페이지 `기업형태` dt/dd,
@@ -180,7 +182,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 ### 웹 (`web/`)
 
 FastAPI + Jinja2 + HTMX. 라우터:
-- `routers/jobs.py`: 목록/상세/분석 조회/전형 상태 변경(`POST /jobs/{id}/application-status`)/수동 공고 등록(`GET·POST /jobs/new`)/수동 마감 토글(`POST /jobs/{id}/toggle-closed`)
+- `routers/jobs.py`: 목록/상세/분석 조회/전형 상태 변경(`POST /jobs/{id}/application-status`)/수동 공고 등록(`GET·POST /jobs/new`)/수동 마감 토글(`POST /jobs/{id}/toggle-closed`)/전형 타임라인 추가·삭제(`POST /jobs/{id}/events`, `POST /jobs/{id}/events/{event_id}/delete`)
 - `routers/runs.py`: 크롤링 이력
 
 > **수동 공고 등록** (`GET·POST /jobs/new`, `new_job.html`): 크롤되지 않는 오프플랫폼 공고(기업 채용홈 등)를
@@ -190,6 +192,13 @@ FastAPI + Jinja2 + HTMX. 라우터:
 > 지원완료·관심없음 토글 버튼(`toggle-applied`/`toggle-ignored` 라우트, `_applied_btn.html`/`_ignored_btn.html`)은 전형 상태 드롭다운으로 통합되며 제거됨. 드롭다운 변경 시 `applyCardStatus()` JS가 카드 색(`st-*` 클래스)을 즉시 갱신하고, hx-post가 DB 저장을 병행.
 
 > **수동 마감 버튼** (`_closed_btn.html`, `POST /jobs/{id}/toggle-closed`): `is_closed`는 `application_status`와 **독립 축**이라 드롭다운에 섞지 않고 별도 버튼으로 둠 (지원완료한 공고도 마감 가능). 크롤로 마감일이 안 잡혀 자동 마감 안 되는 공고를 수기로 마감/해제하는 용도. 클릭 시 `hideCardOnClose()` JS가 현재 뷰와 안 맞으면 카드를 즉시 숨김(단 applied/전형 상태 필터는 `is_closed` 무시하므로 유지), hx-post가 DB 저장 병행. 마감 공고는 `?status=closed`로 열람·복구.
+
+> **전형 타임라인** (`_events.html`, `POST /jobs/{id}/events`·`POST /jobs/{id}/events/{event_id}/delete`):
+> `application_events` 테이블에 지원일/면접일/결과발표일 등을 자유 라벨+날짜로 수동 기록하는 이력 로그.
+> `application_status`(현재 전형 단계 스냅샷)와는 **완전히 독립된 축**이라 서로 자동 연동하지 않는다 —
+> 드롭다운으로 전형 단계를 바꿔도 이벤트가 자동 생성되지 않음(실제 발생일과 상태 변경 시점이 다를 수 있어
+> 의도적으로 분리). 삭제는 `_application_status.html`과 같은 "wrapper id를 outerHTML로 통째로 교체"
+> 패턴을 리스트 전체(`#events-{{ job.id }}`)로 확장한 것 — 새 패턴이 아님.
 
 대시보드 필터 (`status` 파라미터):
 - `scored` / `unscored`: 평가 완료/미평가
