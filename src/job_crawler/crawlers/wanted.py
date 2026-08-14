@@ -180,6 +180,7 @@ class WantedCrawler(BaseCrawler):
             tech_stack=[t for t in tech_stack if t],
             deadline_at=_parse_dt(job.get("due_time")),
             company_type_signals=_extract_company_type_signals(job),
+            is_closed_hint=job.get("status") == "close",
         )
 
 

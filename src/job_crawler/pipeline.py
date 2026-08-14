@@ -152,6 +152,8 @@ def _upsert_job(detail: JobDetail) -> bool:
                 existing.image_urls = detail.image_urls
             if detail.deadline_at is not None:
                 existing.deadline_at = detail.deadline_at
+            if detail.is_closed_hint:
+                existing.is_closed = True
             if company_type is not None:
                 existing.company_type = company_type
             if detail.company_type_signals:
@@ -175,6 +177,7 @@ def _upsert_job(detail: JobDetail) -> bool:
             image_urls=detail.image_urls or None,
             company_type=company_type,
             company_type_signals=detail.company_type_signals or None,
+            is_closed=bool(detail.is_closed_hint),
         )
         session.add(job)
         return True

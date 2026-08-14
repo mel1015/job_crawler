@@ -141,6 +141,7 @@ class RememberCrawler(BaseCrawler):
             experience=_fmt_years(item.get("min_experience"), item.get("max_experience")),
             deadline_at=_parse_dt(item.get("ends_at")),
             company_type_signals=_extract_company_type_signals(item),
+            is_closed_hint=item.get("status") == "closed",
         )
 
 

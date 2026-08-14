@@ -8,9 +8,9 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from loguru import logger
 from sqlalchemy import select
-from sqlalchemy.orm import defer, joinedload
+from sqlalchemy.orm import defer, joinedload, selectinload
 
-from ...db.models import Job, ScoreResult
+from ...db.models import ApplicationEvent, Job, ScoreResult
 from ...db.session import session_scope
 from ...filters.criteria import target_tier
 from ..templating import templates
@@ -75,7 +75,7 @@ def index(
         open_jobs = list(
             session.execute(
                 select(Job)
-                .options(joinedload(Job.score), defer(Job.body_raw))
+                .options(joinedload(Job.score), selectinload(Job.events), defer(Job.body_raw))
                 .where(Job.is_closed == False)  # noqa: E712
             ).unique().scalars()
         )
@@ -105,7 +105,7 @@ def index(
             all_jobs = list(
                 session.execute(
                     select(Job)
-                    .options(joinedload(Job.score), defer(Job.body_raw))
+                    .options(joinedload(Job.score), selectinload(Job.events), defer(Job.body_raw))
                     .where(Job.is_closed == True)  # noqa: E712
                 ).unique().scalars()
             )
@@ -114,7 +114,7 @@ def index(
             all_jobs = list(
                 session.execute(
                     select(Job)
-                    .options(joinedload(Job.score), defer(Job.body_raw))
+                    .options(joinedload(Job.score), selectinload(Job.events), defer(Job.body_raw))
                     .where(Job.is_applied == True)  # noqa: E712
                 ).unique().scalars()
             )
@@ -283,11 +283,55 @@ def create_manual_job(
 def job_detail(request: Request, job_id: int):
     with session_scope() as session:
         job = session.execute(
-            select(Job).options(joinedload(Job.score)).where(Job.id == job_id)
+            select(Job)
+            .options(joinedload(Job.score), selectinload(Job.events))
+            .where(Job.id == job_id)
         ).unique().scalar_one_or_none()
         if job is None:
             raise HTTPException(404, "job not found")
         return templates.TemplateResponse(request, "detail.html", {"job": job})
+
+
+@router.post("/jobs/{job_id:int}/events", response_class=HTMLResponse)
+def create_application_event(
+    request: Request,
+    job_id: int,
+    label: str = Form(""),
+    event_date: str = Form(""),
+    note: str = Form(""),
+):
+    label = label.strip()
+    if not label:
+        raise HTTPException(400, "전형 단계명을 입력하세요.")
+    try:
+        parsed_date = datetime.strptime(event_date.strip().replace(".", "-"), "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "날짜 형식이 올바르지 않습니다 (YYYY.MM.DD).") from None
+    with session_scope() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            raise HTTPException(404)
+        session.add(
+            ApplicationEvent(
+                job_id=job_id, label=label, event_date=parsed_date, note=note.strip() or None
+            )
+        )
+        session.flush()  # autoflush=False → job.events 지연로드가 새 row를 보려면 flush 필요
+        return templates.TemplateResponse(request, "_events.html", {"job": job})
+
+
+@router.post("/jobs/{job_id:int}/events/{event_id:int}/delete", response_class=HTMLResponse)
+def delete_application_event(request: Request, job_id: int, event_id: int):
+    with session_scope() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            raise HTTPException(404)
+        event = session.get(ApplicationEvent, event_id)
+        if event is None or event.job_id != job_id:
+            raise HTTPException(404)
+        session.delete(event)
+        session.flush()
+        return templates.TemplateResponse(request, "_events.html", {"job": job})
 
 
 @router.get("/jobs/{job_id:int}/analysis", response_class=HTMLResponse)

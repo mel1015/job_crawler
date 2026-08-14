@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -54,9 +55,18 @@ class Job(Base):
     company_type_signals: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # 마감+미지원 상태로 오래 방치된 공고의 body_text/body_raw/image_urls를 비웠는지 여부
+    # (cleanup.py의 archive_stale_jobs). body_text IS NULL만으로는 스크랩 실패와 구분 불가해
+    # 별도 플래그 사용
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
     score: Mapped["ScoreResult | None"] = relationship(
         back_populates="job", uselist=False, cascade="all, delete-orphan"
+    )
+    events: Mapped[list[ApplicationEvent]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="ApplicationEvent.event_date, ApplicationEvent.id",
     )
 
 
@@ -96,3 +106,18 @@ class CrawlRun(Base):
     new_jobs: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(16), default="running")  # running|ok|error
     errors: Mapped[list[Any] | None] = mapped_column(JSON)
+
+
+class ApplicationEvent(Base):
+    """공고별 전형 진행 이력. application_status와 무관한 순수 수동 기록."""
+
+    __tablename__ = "application_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(128))  # 자유입력, 프론트 datalist로 프리셋 제안
+    event_date: Mapped[date] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    job: Mapped[Job] = relationship(back_populates="events")

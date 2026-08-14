@@ -46,6 +46,9 @@ class JobDetail:
     image_urls: list[str] = field(default_factory=list)
     # summary.company_type_signals + 상세 페이지에서 추가로 얻은 신호 병합
     company_type_signals: dict = field(default_factory=dict)
+    # 사이트가 명시적으로 마감 상태를 알려줄 때만 True (wanted/remember의 status 필드,
+    # saramin의 접수마감 배지 등). None이면 기존 deadline_at/last_seen_at 기반 로직을 그대로 따름.
+    is_closed_hint: bool | None = None
 
 
 class BaseCrawler(ABC):

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -160,10 +161,23 @@ class JobkoreaCrawler(BaseCrawler):
             body_raw=html[:50000],
             experience=meta.get("experience"),
             company_type_signals=self._extract_company_type_signals(html),
+            deadline_at=self._extract_deadline(html),
         )
 
     _COMPANY_TYPE_RE = re.compile(r'"companyTypeName":"([^"]*)"')
     _FOREIGN_RE = re.compile(r'"foreign":(true|false)')
+    _DEADLINE_RE = re.compile(r"마감일\s*:\s*(\d{4})\.(\d{2})\.(\d{2})")
+
+    def _extract_deadline(self, html: str) -> datetime | None:
+        """<meta name="description"> 의 "마감일 : YYYY.MM.DD" 텍스트에서 추출.
+        "상시채용" 등 날짜가 없는 경우는 None(기존 7일 미갱신 로직으로 처리)."""
+        m = self._DEADLINE_RE.search(html)
+        if not m:
+            return None
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
 
     def _extract_company_type_signals(self, html: str) -> dict:
         """Next.js RSC 스트리밍 데이터(script)에 박힌 회사 정보 JSON에서 추출.
