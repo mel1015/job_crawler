@@ -42,6 +42,10 @@ jc-score < scores.json       # {"scores": [...]} 형식도 허용
 # 스케줄러 (09:00 / 19:00 KST 자동 크롤링)
 jc-scheduler
 
+# 마감+미지원 오래된 공고 본문 아카이브 (되돌릴 수 없음, /cleanup 스킬로 실행 권장)
+jc-cleanup --dry-run          # 대상 건수/샘플 미리보기 (DB 변경 없음)
+jc-cleanup --days 90          # 실제 아카이브 실행 (기본 90일)
+
 # 린트
 ruff check src/
 ruff format src/
@@ -56,7 +60,7 @@ pytest tests/test_resume_loader.py  # 단일 파일
 
 ## 커스텀 스킬 (`.claude/skills/`)
 
-프로젝트 로컬 슬래시 명령. Claude Code 세션에서 `/crawl`, `/analyze`, `/check-daemon` 으로 호출.
+프로젝트 로컬 슬래시 명령. Claude Code 세션에서 `/crawl`, `/analyze`, `/check-daemon`, `/cleanup` 으로 호출.
 
 `/crawl`, `/analyze`는 frontmatter에 `model: claude-sonnet-5`, `effort: xhigh`가 고정되어 세션 모델과 무관하게 해당 설정으로 실행됨 (frontmatter는 정적 YAML이라 env 참조 불가). `/analyze` 병렬 배치의 서브에이전트도 `model: "sonnet"`으로 호출. `jc-scheduler`의 자동분석(`_run_analysis`)은 `config.get_analysis_model_settings()`를 통해 `.env`의 `ANALYSIS_MODEL`/`ANALYSIS_EFFORT`/`ANALYSIS_TIMEOUT_SEC`(기본 claude-sonnet-5 / xhigh / 1800초)로 설정. 미평가 재검사 창은 `scheduler.py`의 `_ANALYSIS_LOOKBACK_DAYS`(기본 3일) — 특정 회차의 `claude -p`가 무진행으로 실패해도 이후 회차에서 최대 3일간 재시도 대상에 남도록 함.
 
@@ -64,8 +68,9 @@ pytest tests/test_resume_loader.py  # 단일 파일
 - `/analyze [days=7] [limit=전체건수]`: `count_unscored_jobs()` 로 미평가 건수 확인 → 0건이면 종료. limit 미지정 시 이 건수(N)를 그대로 사용해 전체를 조회(20건 초과는 병렬 배치가 규모를 흡수하므로 임의 상한 없음) → `build_analysis_prompt()` 로 출력된 절차(이력서 프로파일 비교·채점 규칙 적용·이미지 공고 시각 분석)를 따라 평가 → `save_claude_scores()` 저장 → 잔여 미평가 건수 재조회 후 보고
   - 미평가 건수(N) 20건 초과 시 병렬 배치 처리: `num_batches = min(4, ceil(N/15))` 로 분할해 `Agent`(general-purpose) 를 한 메시지에서 동시 호출, 배치별 결과(JSON 배열만 반환·DB 미저장)를 메인이 취합해 `save_claude_scores()` 1회 호출로 저장(SQLite 동시쓰기 락 방지). 크롤링 1회 평균 신규 공고 32건(중앙값 20건) 기준 임계값
 - `/check-daemon`: `jc-scheduler`·`caffeinate` 프로세스 생존 확인(`pgrep`) → 최근 크롤링 결과(마지막 수집 시각·오늘 신규 건수·미평가 건수) DB 조회 → 스케줄(09:00/19:00 KST) 기준 미실행 의심 여부 판정 후 4줄 이내 보고. 죽어있으면 재기동 명령을 제시만 하고 직접 실행하지 않음
+- `/cleanup [days=90]`: `jc-cleanup --dry-run` 으로 마감+미지원+`last_seen_at` N일 경과 공고의 본문 아카이브 대상 미리보기 → 현재 `data/jobs.db` 파일 크기 확인 → **사용자 승인 후에만** `jc-cleanup --days N` 실제 실행 → 아카이브 건수와 파일 크기 변화 보고. 되돌릴 수 없는 작업(body_text/body_raw/image_urls 영구 삭제)이라 스케줄러 자동 통합 없이 수동 실행만 지원
 
-`/crawl`·`/analyze` 실제 로직은 `scoring/claude_batch.py`·`scoring/contract.py`에 있고, 스킬 파일은 인자 파싱과 실행 순서만 정의. `/check-daemon`은 별도 모듈 없이 스킬 파일 자체에 절차 기술.
+`/crawl`·`/analyze` 실제 로직은 `scoring/claude_batch.py`·`scoring/contract.py`에 있고, 스킬 파일은 인자 파싱과 실행 순서만 정의. `/check-daemon`은 별도 모듈 없이 스킬 파일 자체에 절차 기술. `/cleanup` 실제 로직은 `cleanup.py`.
 
 ## Architecture
 
@@ -107,6 +112,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
   - `is_ignored`: 관심없음 표시 (기본 목록에서 숨김 — `status=ignored` 필터로만 열람)
   - 위 세 필드는 카드의 전형 상태 드롭다운(`_application_status.html`) 하나로 통합 제어 (컨트롤 분산 시 모순 상태 방지)
   - `company_type`: 대기업/중견기업/중소기업/공기업/외국계/스타트업/금융업/`None`(미분류) 단일 라벨. `company_type_signals`(JSON): 정규화 이전 사이트별 원본 신호 보존(라벨 규칙 변경 시 재크롤 없이 `filters/company_type.py`의 `normalize_company_type()`만 재실행하면 재분류 가능)
+  - `is_archived`: 마감+미지원 상태로 오래 방치돼 `cleanup.py`의 `archive_stale_jobs()`가 본문(`body_text`/`body_raw`/`image_urls`)을 NULL 처리했는지 여부. `url`/`title`/`company`/`score` 등 메타데이터는 유지. `body_text IS NULL`만으로는 스크랩 실패와 구분 불가해 별도 플래그 사용
 - `ScoreResult`: 합격률 평가 결과 (`match_rate`, `verdict`, `strengths`, `gaps`, `red_flags`, `action_tip`, `model`). `model='claude-code'` 고정
 - `CrawlRun`: 실행 이력 (`site`, `fetched`, `new_jobs`, `status`, `errors`)
 - `ApplicationEvent`: 공고별 전형 진행 이력(지원일/면접일/결과발표일 등)을 수동 기록. `label`(자유입력, 프론트 datalist로 프리셋 제안)/`event_date`(Date)/`note`(선택)/`created_at`(기록 입력 시각). `Job.events` (`order_by=event_date, id`, `cascade="all, delete-orphan"`)
@@ -119,6 +125,20 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 - `d4e5f6a7b8c9_add_application_status_to_jobs.py`: `application_status` String 컬럼 추가 (전형 단계)
 - `e5f6a7b8c9d0_add_company_type_to_jobs.py`: `company_type`/`company_type_signals` 컬럼 추가 (기업유형)
 - `f6a7b8c9d0e1_add_application_events.py`: `application_events` 테이블 신설 (전형 타임라인)
+- `a7b8c9d0e1f2_add_is_archived_to_jobs.py`: `is_archived` Boolean 컬럼 추가 (오래된 마감 공고 본문 아카이브)
+
+> **오래된 마감 공고 아카이브** (`cleanup.py`, `/cleanup` 스킬): 스코어링/통계/대시보드 어디에서도 마감된 과거
+> 공고의 본문을 참조하지 않는다는 걸 확인(2026-08)한 뒤 도입. 마감(`is_closed=True`)+미지원(`is_applied=False`)
+> +`last_seen_at`이 `settings.job_retention_days`(`.env`의 `JOB_RETENTION_DAYS`, 기본 90일) 이상 지난 공고의
+> `body_text`/`body_raw`/`image_urls`만 NULL 처리하고 `title`/`company`/`url`/`score` 등 메타데이터는 유지 —
+> 완전 삭제 대신 경량 아카이브를 택한 이유는 향후 회사 재공고 패턴 탐지·재지원 시 점수 회고 등에 메타데이터만
+> 있으면 되기 때문. `posted_at`은 62%가 NULL, `first_seen_at`은 늦게 마감된 공고를 과도하게 오래된 것으로
+> 오판할 수 있어 `last_seen_at`(마감 시점에 가장 가까운 대리 지표)을 기준으로 씀. `Job`→`ScoreResult`/
+> `ApplicationEvent`는 컬럼 NULL 처리라 cascade 미발동(행 자체를 안 지우므로 이력 유실 없음). VACUUM으로
+> 디스크까지 회수하는 되돌릴 수 없는 작업(특히 catch는 마감 공고 재크롤 복구 불가)이라 스케줄러 자동 통합 없이
+> 수동 `/cleanup`으로만 실행. "마감됐어야 하는데 안 된 공고"(`is_closed=False`) 문제는 원인이 사이트마다 달라
+> (jumpit은 검색 순위 밀림으로 인한 정상 케이스, saramin은 마감일 추출이 실제와 어긋나는 별개 버그로 의심)
+> 이 기능 범위에서 제외 — 이미 `is_closed=True`로 확정된 공고만 다룬다. 사이트간 중복 공고 탐지도 별도 과제.
 
 > **기업유형 분류** (`filters/company_type.py`): catch/saramin/jobkorea/remember/wanted 5개 사이트는 자체적으로
 > 기업유형에 준하는 데이터를 갖고 있어(catch `GroupName`/`PopularCategory`, saramin 상세페이지 `기업형태` dt/dd,

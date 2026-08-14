@@ -55,6 +55,10 @@ class Job(Base):
     company_type_signals: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # 마감+미지원 상태로 오래 방치된 공고의 body_text/body_raw/image_urls를 비웠는지 여부
+    # (cleanup.py의 archive_stale_jobs). body_text IS NULL만으로는 스크랩 실패와 구분 불가해
+    # 별도 플래그 사용
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
     score: Mapped["ScoreResult | None"] = relationship(
         back_populates="job", uselist=False, cascade="all, delete-orphan"
