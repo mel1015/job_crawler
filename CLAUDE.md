@@ -82,6 +82,8 @@ pytest tests/test_resume_loader.py  # 단일 파일
 3. `asyncio.gather` + `Semaphore(CRAWL_CONCURRENCY)` 로 병렬 `crawler.fetch_detail()`
 4. SQLite upsert (`_upsert_job`) + `CrawlRun` 이력 기록
 5. `_mark_closed_jobs`: deadline_at 경과 또는 7일 미갱신 공고 → `is_closed=True` (`is_applied=True` 공고는 제외)
+   `_upsert_job`은 이 판정과 별도로 `JobDetail.is_closed_hint=True`면 즉시 `is_closed=True` 처리(사이트가
+   명시적으로 마감을 알려주는 경우 — 아래 "마감 감지 신호" 참고)
 
 ### 크롤러 (`crawlers/`)
 
@@ -91,6 +93,33 @@ pytest tests/test_resume_loader.py  # 단일 파일
 - `company/`: 개별 기업 채용페이지 크롤러 (toss 등). ACTIVE_SITES에 포함되지 않음
 
 **새 크롤러 추가 시**: `BaseCrawler` 상속 → `registry.py`에 등록 → 필요 시 `ACTIVE_SITES`에 추가
+
+> **마감 감지 신호** (2026-08 조사): "마감됐어야 하는데 `is_closed=False`로 남는" 문제를 6개 사이트 전수
+> 조사한 결과 사이트마다 원인이 달라 대응도 다르다.
+> - **wanted**: 상세 API의 `status`(active/close)/`hidden` 필드를 그동안 안 읽고 있었음 — `due_time`(마감일)이
+>   미래인데도 이미 마감된 케이스가 확인돼(표본 180건 중 10건, 그중 4건은 `due_time` 미래) `status=='close'`를
+>   `JobDetail.is_closed_hint`로 직접 반영하도록 수정(`crawlers/wanted.py`).
+> - **remember**: 상세 API의 `status`(published/closed) 필드도 동일하게 미사용이었음 → `status=='closed'`를
+>   `is_closed_hint`로 반영(`crawlers/remember.py`). `ends_at`(deadline_at)이 NULL이어도 `status`만으로
+>   마감 판별 가능한 케이스 확인됨.
+> - **saramin**: 근본 원인은 신호 부재가 아니라 **검색 순위(`recruitSort=reg_dt`)에서 밀려난 공고는
+>   `fetch_detail()`이 다시는 호출되지 않아 한 번 캡처된 `deadline_at`이 미래값으로 영구히 고정**되는 것
+>   (`_mark_closed_jobs`는 `deadline_at`이 있으면 7일 미갱신 fallback을 적용 안 함). 표본 11건 중 5건이
+>   실제로는 이미 마감(최대 38일 전). 상세 페이지의 `<span class="sri_btn_expired_apply">접수마감</span>`
+>   존재 여부를 `is_closed_hint`로 반영(`crawlers/saramin.py`) — 단, 재조회 자체가 안 되는 근본 구조는
+>   아래 백필로 기존 적체분만 해소, 향후 신규 발생분은 여전히 재조회돼야 신호가 반영됨.
+> - **jobkorea**: `deadline_at` 추출 자체가 없었음(100% NULL). `<meta name="description">`의
+>   "마감일 : YYYY.MM.DD" 텍스트를 정규식으로 파싱해 `deadline_at`에 반영(`crawlers/jobkorea.py`).
+>   "상시채용"은 날짜가 없어 기존 7일 로직 그대로 적용.
+> - **jumpit**: API에 `status`/`invisible`/`hiddenPosition` 필드가 있지만 마감 3개월 지나도 값이 안 바뀌어
+>   신호로 못 씀 — 현재 `closedAt`→`deadline_at` 방식이 최선이라 수정 안 함.
+> - **catch**: 표본 조사에서 "닫혔어야 하는데 안 닫힌" 순수 사례 0건 — 7일 룰이 이미 정상 작동해 수정 안 함.
+>   (참고: CLAUDE.md의 "마감 공고 재크롤 복구 불가"는 API 자체 한계가 아니라 크롤러가 쓰는
+>   `onRecruitYN=Y` 파라미터 때문 — `N`으로 요청하면 마감 공고도 `ApplyEndDatetime`과 함께 반환됨)
+>
+> 위 신호 반영은 향후 신규/재발견분에만 자동 적용되므로, 이미 검색 결과에서 밀려나 재조회가 끊긴
+> wanted/remember/saramin의 기존 열린 공고(백필 시점 기준 189/146/1010건)는 `external_id`로 직접
+> 재조회하는 1회성 백필로 별도 정리함(`pipeline._upsert_job` 재사용, 스크립트는 커밋 대상 아님).
 
 ### 필터링 (`filters/criteria.py`)
 
