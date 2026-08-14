@@ -157,6 +157,7 @@ class SaraminCrawler(BaseCrawler):
             employment_type=meta.get("employment_type"),
             deadline_at=self._extract_deadline(soup),
             company_type_signals=self._extract_company_type_signals(soup),
+            is_closed_hint=soup.select_one(".sri_btn_expired_apply") is not None,
         )
 
     def _extract_company_type_signals(self, soup: BeautifulSoup) -> dict:
