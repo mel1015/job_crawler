@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     analysis_effort: str = "xhigh"
     analysis_timeout_sec: int = 1800
 
+    # 마감+미지원 공고 아카이브(cleanup.py) 보존기간
+    job_retention_days: int = 90
+
     @property
     def it_company_whitelist_list(self) -> list[str]:
         return [s.strip() for s in self.it_company_whitelist.split(",") if s.strip()]

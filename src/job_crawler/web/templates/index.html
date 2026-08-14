@@ -160,6 +160,11 @@
           {% endif %}
         </div>
         {% endif %}
+        {% if j.events %}
+        <div class="tags">
+          {% for ev in j.events %}<span class="chip event">{{ ev.event_date.strftime('%m/%d') }} {{ ev.label }}</span>{% endfor %}
+        </div>
+        {% endif %}
       </div>
       <div class="score-area">
         {% with job=j %}{% include '_closed_btn.html' %}{% endwith %}

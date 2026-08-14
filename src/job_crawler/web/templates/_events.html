@@ -1,0 +1,41 @@
+<div class="card" id="events-{{ job.id }}">
+  <h3><span class="ic"></span>전형 타임라인</h3>
+
+  {% if job.events %}
+  <ul class="timeline">
+    {% for ev in job.events %}
+    <li class="timeline-item">
+      <span class="timeline-date">{{ ev.event_date.strftime('%Y-%m-%d') }}</span>
+      <span class="timeline-label">{{ ev.label }}</span>
+      {% if ev.note %}<span class="timeline-note">{{ ev.note }}</span>{% endif %}
+      <button type="button" class="btn ghost sm timeline-del"
+              hx-post="/jobs/{{ job.id }}/events/{{ ev.id }}/delete"
+              hx-target="#events-{{ job.id }}"
+              hx-swap="outerHTML"
+              hx-confirm="이 기록을 삭제할까요?"
+              title="삭제">삭제</button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted" style="font-size:13px; margin-bottom:12px;">아직 기록된 전형 일정이 없습니다.</p>
+  {% endif %}
+
+  <form class="timeline-form" hx-post="/jobs/{{ job.id }}/events" hx-target="#events-{{ job.id }}" hx-swap="outerHTML">
+    <input type="text" name="label" list="event-label-presets" placeholder="전형 단계 (예: 1차면접)" required
+           style="background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:13px; flex:1; min-width:140px;">
+    <input type="text" name="event_date" inputmode="numeric" placeholder="YYYY.MM.DD" required
+           maxlength="10" oninput="formatEventDate(this)"
+           style="background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:13px; width:110px;">
+    <input type="text" name="note" placeholder="메모 (선택)"
+           style="background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:13px; flex:2; min-width:160px;">
+    <button type="submit" class="btn sm">추가</button>
+  </form>
+  <datalist id="event-label-presets">
+    <option value="지원"><option value="서류결과">
+    <option value="코딩테스트"><option value="코딩테스트결과">
+    <option value="1차면접"><option value="1차면접결과">
+    <option value="2차면접"><option value="2차면접결과">
+    <option value="임원면접"><option value="최종결과">
+  </datalist>
+</div>

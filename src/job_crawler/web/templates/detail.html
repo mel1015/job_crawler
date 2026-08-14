@@ -99,8 +99,14 @@
 </div>
 {% endif %}
 
+{% include '_events.html' %}
+
 <div class="detail-body">
   <h3 style="margin:0 0 14px; font-size:15px; display:flex; align-items:center; gap:8px;"><span style="width:3px; height:14px; background:var(--accent); border-radius:2px; display:inline-block;"></span>공고 본문</h3>
+  {% if job.is_archived %}
+  <div class="body-content" style="color:var(--fg2);">오래되어 원문이 정리된 공고입니다. 평가 결과·전형 이력은 유지됩니다.</div>
+  {% else %}
   <div class="body-content">{{ job.body_text | fmt_body }}</div>
+  {% endif %}
 </div>
 {% endblock %}
