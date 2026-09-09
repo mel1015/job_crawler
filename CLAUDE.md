@@ -138,6 +138,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 - `Job`: 공고 본문 (`body_text`, `body_raw`), `is_closed`, `is_applied`, `application_status`, `is_ignored`, `last_seen_at`, `score_result` 관계
   - `is_applied`: 지원완료 표시 (기본 목록에 포함)
   - `application_status`: 지원 후 전형 단계. `None`=결과대기, `doc_passed`/`doc_rejected`/`coding_test`/`job_interview`/`exec_interview`/`final_passed`/`final_rejected`. `is_applied=True`일 때만 의미
+    - 예외: `planned`(지원예정)은 **아직 지원 전**이라 `is_applied=False`인 채로 이 컬럼에만 기록한다. 그래서 `VALID_APP_STATUSES`(전부 `is_applied=True` 전제)에 넣지 않고 `PLANNED_STATUS` 상수로 따로 분기 — 이 집합에 넣으면 `is_applied=True` 쿼리를 쓰는 "지원완료" 필터가 지원예정 공고를 빈 결과로 돌려준다
   - `is_ignored`: 관심없음 표시 (기본 목록에서 숨김 — `status=ignored` 필터로만 열람)
   - 위 세 필드는 카드의 전형 상태 드롭다운(`_application_status.html`) 하나로 통합 제어 (컨트롤 분산 시 모순 상태 방지)
   - `company_type`: 대기업/중견기업/중소기업/공기업/외국계/스타트업/금융업/`None`(미분류) 단일 라벨. `company_type_signals`(JSON): 정규화 이전 사이트별 원본 신호 보존(라벨 규칙 변경 시 재크롤 없이 `filters/company_type.py`의 `normalize_company_type()`만 재실행하면 재분류 가능)
@@ -231,7 +232,7 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 ### 웹 (`web/`)
 
 FastAPI + Jinja2 + HTMX. 라우터:
-- `routers/jobs.py`: 목록/상세/분석 조회/전형 상태 변경(`POST /jobs/{id}/application-status`)/수동 공고 등록(`GET·POST /jobs/new`)/수동 마감 토글(`POST /jobs/{id}/toggle-closed`)/전형 타임라인 추가·삭제(`POST /jobs/{id}/events`, `POST /jobs/{id}/events/{event_id}/delete`)
+- `routers/jobs.py`: 목록/상세/분석 조회/전형 상태 변경(`POST /jobs/{id}/application-status`)/수동 공고 등록(`GET·POST /jobs/new`)/수동 마감 토글(`POST /jobs/{id}/toggle-closed`)/지원예정 표시 및 이력서 저장소 내보내기(`POST /jobs/{id}/plan-apply`)/전형 타임라인 추가·삭제(`POST /jobs/{id}/events`, `POST /jobs/{id}/events/{event_id}/delete`)
 - `routers/runs.py`: 크롤링 이력
 
 > **수동 공고 등록** (`GET·POST /jobs/new`, `new_job.html`): 크롤되지 않는 오프플랫폼 공고(기업 채용홈 등)를
@@ -242,6 +243,21 @@ FastAPI + Jinja2 + HTMX. 라우터:
 
 > **수동 마감 버튼** (`_closed_btn.html`, `POST /jobs/{id}/toggle-closed`): `is_closed`는 `application_status`와 **독립 축**이라 드롭다운에 섞지 않고 별도 버튼으로 둠 (지원완료한 공고도 마감 가능). 크롤로 마감일이 안 잡혀 자동 마감 안 되는 공고를 수기로 마감/해제하는 용도. 클릭 시 `hideCardOnClose()` JS가 현재 뷰와 안 맞으면 카드를 즉시 숨김(단 applied/전형 상태 필터는 `is_closed` 무시하므로 유지), hx-post가 DB 저장 병행. 마감 공고는 `?status=closed`로 열람·복구.
 
+> **지원예정 버튼과 이력서 저장소 내보내기** (`_plan_btn.html`, `POST /jobs/{id}/plan-apply`, `resume/export.py`):
+> 상세 페이지에서 누르면 `application_status='planned'`(+`is_applied=False`)로 표시하고, claude_resume 저장소에
+> 회사 폴더와 `공고_{회사}.md`를 만든다. claude_resume의 `/add-posting` 커맨드 2~3단계(폴더 결정, 공고 파일 작성)를
+> 서버에서 그대로 수행하되, LLM이 필요한 5단계(자기소개서 초안)는 **범위 밖** — 폴더가 생긴 뒤 claude_resume 세션에서
+> 이어 쓴다. 파일 내용은 메타데이터 블록 + `body_text` 원문 + `## 합격률 분석`(강점/부족한 점/결격 요소/지원 팁) 한 파일.
+> 중복 판정 근거는 `공고_*.md` 안의 `job_crawler id: {id}` 줄 하나뿐이라 **이 줄을 지우면 재클릭 시 새 파일이 생긴다**.
+> 같은 회사에 다른 포지션이 이미 있으면 덮어쓰지 않고 `공고_{회사}_{직무슬러그}.md`로 새로 만든다.
+> 회사 폴더는 저장소 전체를 `rglob`으로 훑어 **`company` 값과 정확히 같은 이름**의 디렉터리를 재사용하므로
+> (`서류통과/`·`서류탈락/` 하위도 포함), 공고의 `company`가 기존 폴더명과 다르면(예: 폴더 `LINE` vs company `LINE Pay Plus`)
+> 루트에 새 폴더가 생긴다 — 유사 이름 자동 매칭은 오폴더 위험이 커서 의도적으로 안 함.
+> 저장소 경로는 `.env`의 `RESUME_REPO_PATH`, 미설정 시 `RESUME_PATH`의 상위 2단계에서 유도.
+> 내보내기가 실패해도 상태 변경은 유지하고 버튼 옆에 실패 칩만 띄운다(경로 문제로 대시보드 조작이 막히지 않게).
+> 드롭다운(`_application_status.html`)의 `지원예정` 옵션은 **상태만** 바꾸고 파일을 만들지 않는다 — 목록에서
+> select를 건드리는 것만으로 파일이 써지면 곤란해서 파일 생성은 상세 페이지 버튼에만 둠.
+
 > **전형 타임라인** (`_events.html`, `POST /jobs/{id}/events`·`POST /jobs/{id}/events/{event_id}/delete`):
 > `application_events` 테이블에 지원일/면접일/결과발표일 등을 자유 라벨+날짜로 수동 기록하는 이력 로그.
 > `application_status`(현재 전형 단계 스냅샷)와는 **완전히 독립된 축**이라 서로 자동 연동하지 않는다 —
@@ -251,6 +267,7 @@ FastAPI + Jinja2 + HTMX. 라우터:
 
 대시보드 필터 (`status` 파라미터):
 - `scored` / `unscored`: 평가 완료/미평가
+- `planned`: `application_status='planned'` 공고 (지원예정). `is_applied=False`라 기본 목록(`is_closed=False`)에서 걸러냄
 - `applied`: `is_applied=True` 공고 (마감 여부 무관 — `is_closed` 무시)
 - `doc_passed`/`doc_rejected`/`coding_test`/`job_interview`/`exec_interview`/`final_passed`/`final_rejected`: 전형 단계별 공고 (`application_status` 일치, 마감 여부 무관)
 - `ignored`: `is_ignored=True` 공고만 표시 (이 외 모든 상태에서는 `is_ignored=False` 공고만 표시)
@@ -271,7 +288,7 @@ FastAPI + Jinja2 + HTMX. 라우터:
 ### 설정 (`config.py`)
 
 `pydantic-settings` 기반, `.env` 파일 로드. `get_settings()` 로 싱글톤 접근.
-주요 설정: `DESIRED_ROLES`, `DESIRED_REGIONS`, `DESIRED_POSITIONS`, `BLACKLIST_COMPANIES`, `REQUIRED_KEYWORDS`, `CRAWL_CONCURRENCY`, `RESUME_PATH`
+주요 설정: `DESIRED_ROLES`, `DESIRED_REGIONS`, `DESIRED_POSITIONS`, `BLACKLIST_COMPANIES`, `REQUIRED_KEYWORDS`, `CRAWL_CONCURRENCY`, `RESUME_PATH`, `RESUME_REPO_PATH`(지원예정 내보내기 대상, 미설정 시 `RESUME_PATH`에서 유도)
 
 ## 새 사이트 추가 패턴
 

@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     )
 
     resume_path: Path = Path("resume.md")
+    # 지원예정 공고 md를 내보낼 claude_resume 저장소 루트.
+    # 미설정 시 resume_path에서 유도 (.../claude_resume/공통/이력서.md -> .../claude_resume)
+    resume_repo_path: Path | None = None
 
     desired_roles: str = ""
     desired_regions: str = ""
@@ -47,6 +50,13 @@ class Settings(BaseSettings):
 
     # 마감+미지원 공고 아카이브(cleanup.py) 보존기간
     job_retention_days: int = 90
+
+    @property
+    def resume_repo_dir(self) -> Path:
+        """공고 md를 내보낼 claude_resume 저장소 루트."""
+        if self.resume_repo_path is not None:
+            return self.resume_repo_path.expanduser()
+        return self.resume_path.expanduser().resolve().parent.parent
 
     @property
     def it_company_whitelist_list(self) -> list[str]:

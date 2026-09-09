@@ -13,6 +13,7 @@ from sqlalchemy.orm import defer, joinedload, selectinload
 from ...db.models import ApplicationEvent, Job, ScoreResult
 from ...db.session import session_scope
 from ...filters.criteria import target_tier
+from ...resume.export import export_job
 from ..templating import templates
 
 router = APIRouter()
@@ -23,6 +24,10 @@ COMPANY_TYPES = ["대기업", "중견기업", "중소기업", "공기업", "외�
 VALID_COMPANY_TYPES = set(COMPANY_TYPES) | {"none"}
 
 PAGE_SIZE = 50
+
+# 지원예정: 아직 지원하지 않은 상태라 is_applied=False로 두고 application_status에만 기록한다.
+# VALID_APP_STATUSES(=is_applied=True 전제)와 섞으면 "지원완료" 조회에 딸려 들어와 별도 취급.
+PLANNED_STATUS = "planned"
 
 VALID_APP_STATUSES = {
     "doc_passed",
@@ -52,7 +57,9 @@ def index(
     request: Request,
     site: str | None = Query(None),
     min_rate: str | None = Query(None),
-    status: str | None = Query(None, description="scored | unscored | applied | ignored | closed"),
+    status: str | None = Query(
+        None, description="scored | unscored | planned | applied | ignored | closed"
+    ),
     tier: str | None = Query(None, description="1 | 2 | 3 | hold | none"),
     company_type: str | None = Query(None, description="대기업 | 중견기업 | ... | none(미분류)"),
     q: str | None = Query(None),
@@ -133,6 +140,8 @@ def index(
                 jobs = [j for j in jobs if not (j.score and j.score.status == "done")]
             elif status == "applied":
                 jobs = [j for j in jobs if j.is_applied]
+            elif status == PLANNED_STATUS:
+                jobs = [j for j in jobs if j.application_status == PLANNED_STATUS]
             elif status in VALID_APP_STATUSES:
                 jobs = [j for j in jobs if j.application_status == status]
 
@@ -363,6 +372,10 @@ def set_application_status(request: Request, job_id: int, status: str = Form("")
             if status == "not_applied":
                 job.is_applied = False
                 job.application_status = None
+            elif status == PLANNED_STATUS:
+                # 지원예정은 아직 지원 전이라 is_applied를 올리지 않는다
+                job.is_applied = False
+                job.application_status = PLANNED_STATUS
             elif status == "applied":
                 job.is_applied = True
                 job.application_status = None
@@ -371,6 +384,41 @@ def set_application_status(request: Request, job_id: int, status: str = Form("")
                 job.application_status = status
         return templates.TemplateResponse(
             request, "_application_status.html", {"job": job}
+        )
+
+
+@router.post("/jobs/{job_id:int}/plan-apply", response_class=HTMLResponse)
+def plan_apply(request: Request, job_id: int):
+    """지원예정으로 표시하고 claude_resume에 회사 폴더/공고 md를 만든다.
+
+    파일 생성이 실패해도 상태 변경은 유지하고 버튼에 실패 사유만 표시한다
+    (이력서 저장소 경로 문제로 대시보드 조작 자체가 막히지 않게 함).
+    """
+    with session_scope() as session:
+        job = session.execute(
+            select(Job).options(joinedload(Job.score)).where(Job.id == job_id)
+        ).unique().scalar_one_or_none()
+        if job is None:
+            raise HTTPException(404)
+        # 지원완료 공고를 지원예정으로 되돌리면 전형 단계가 사라진다. 되돌리려면
+        # 드롭다운으로 명시적으로 미지원부터 거치게 한다.
+        if job.is_applied:
+            raise HTTPException(400, "이미 지원한 공고입니다.")
+        job.is_ignored = False
+        job.application_status = PLANNED_STATUS
+
+        error: str | None = None
+        result = None
+        try:
+            result = export_job(job)
+        except Exception as exc:  # 경로 부재·권한 등
+            logger.exception("공고 내보내기 실패 job_id={}", job_id)
+            error = str(exc)
+
+        return templates.TemplateResponse(
+            request,
+            "_plan_btn.html",
+            {"job": job, "result": result, "error": error},
         )
 
 

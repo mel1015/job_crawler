@@ -42,6 +42,8 @@ function applyCardStatus(sel) {
   } else {
     card.style.display = '';
     if (v && v !== 'not_applied') card.classList.add('st-' + v);
+    // 지원예정 보기에서 다른 상태로 바꾸면 서버 필터 결과와 어긋나므로 즉시 숨김
+    if (curStatus === 'planned' && v !== 'planned') card.style.display = 'none';
   }
   reorderAppliedCard(card);
 }
@@ -284,6 +286,7 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .job-card .meta-line .deadline.unknown { background: var(--surface2); color: var(--mute); border: 1px solid var(--border); font-style: italic; }
 .job-card .score-area { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
 /* 전형 상태별 카드 구분: 좌측 보더 색 + 배경 tint. 탈락·관심없음만 추가로 흐리게 */
+.job-card.st-planned        { border-left: 3px solid #f59e0b; background: rgba(245,158,11,.08); }
 .job-card.st-applied        { border-left: 3px solid #3b82f6; background: rgba(59,130,246,.07); }
 .job-card.st-doc_passed     { border-left: 3px solid #14b8a6; background: rgba(20,184,166,.09); }
 .job-card.st-coding_test    { border-left: 3px solid #6366f1; background: rgba(99,102,241,.09); }
@@ -319,6 +322,10 @@ h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .btn.ignored-off:hover { background: #2d3748; }
 .btn.ignored-on { background: transparent; color: #a0aec0; border: 1px solid #718096; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
 .btn.ignored-on:hover { background: #2d3748; }
+.btn.plan-off { background: transparent; color: #d97706; border: 1px solid #d97706; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+.btn.plan-off:hover { background: rgba(245,158,11,.12); }
+.btn.plan-on { background: rgba(245,158,11,.16); color: #f59e0b; border: 1px solid #f59e0b; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+.btn.plan-on:hover { background: rgba(245,158,11,.26); }
 .btn.closed-off { background: transparent; color: var(--mute); border: 1px solid var(--border2); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
 .btn.closed-off:hover { background: var(--surface2); color: var(--fg2); }
 .btn.closed-on { background: var(--surface3); color: var(--fg2); border: 1px solid var(--border2); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
