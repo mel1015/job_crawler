@@ -1,0 +1,23 @@
+{# 이미 지원한 공고는 지원예정으로 되돌릴 일이 없다. 버튼을 남겨두면 클릭 한 번에
+   is_applied/application_status가 초기화돼 전형 단계가 날아가므로 아예 렌더링하지 않는다. #}
+<span id="planbtn-{{ job.id }}" style="display:inline-flex; align-items:center; gap:8px;">
+  {% if not job.is_applied %}
+  <button type="button"
+          class="btn sm {% if job.application_status == 'planned' %}plan-on{% else %}plan-off{% endif %}"
+          hx-post="/jobs/{{ job.id }}/plan-apply"
+          hx-target="#planbtn-{{ job.id }}"
+          hx-swap="outerHTML"
+          onclick="event.stopPropagation();"
+          title="지원예정으로 표시하고 claude_resume에 회사 폴더/공고 md를 생성합니다">
+    {% if job.application_status == 'planned' %}★ 지원예정{% else %}지원예정{% endif %}
+  </button>
+  {% endif %}
+  {% if error is defined and error %}
+    <span class="chip bad" title="{{ error }}">md 생성 실패</span>
+  {% elif result is defined and result %}
+    <span class="chip {% if result.created %}ok{% endif %}">
+      {% if result.created %}생성{% else %}이미 있음{% endif %}:
+      {{ result.path.parent.name }}/{{ result.path.name }}
+    </span>
+  {% endif %}
+</span>

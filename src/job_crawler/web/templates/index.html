@@ -54,6 +54,7 @@
       <option value="">평가 상태</option>
       <option value="scored" {% if filters.status == 'scored' %}selected{% endif %}>평가완료</option>
       <option value="unscored" {% if filters.status == 'unscored' %}selected{% endif %}>미평가</option>
+      <option value="planned" {% if filters.status == 'planned' %}selected{% endif %}>지원예정</option>
       <option value="applied" {% if filters.status == 'applied' %}selected{% endif %}>지원완료</option>
       <option value="doc_passed" {% if filters.status == 'doc_passed' %}selected{% endif %}>　서류합격</option>
       <option value="doc_rejected" {% if filters.status == 'doc_rejected' %}selected{% endif %}>　서류탈락</option>
