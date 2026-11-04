@@ -10,9 +10,10 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    # 파일 또는 폴더. 폴더면 메인_*_v{N}.md를 종류별 최신 버전으로 골라 합쳐 읽는다
     resume_path: Path = Path("resume.md")
     # 지원예정 공고 md를 내보낼 claude_resume 저장소 루트.
-    # 미설정 시 resume_path에서 유도 (.../claude_resume/공통/이력서.md -> .../claude_resume)
+    # 미설정 시 resume_path에서 유도 (.../claude_resume/공통[/이력서.md] -> .../claude_resume)
     resume_repo_path: Path | None = None
 
     desired_roles: str = ""
@@ -44,7 +45,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Claude 자동분석 모델 설정 (scheduler._run_analysis)
-    analysis_model: str = "claude-sonnet-5"
+    analysis_model: str = "claude-sonnet-5-5"
     analysis_effort: str = "xhigh"
     analysis_timeout_sec: int = 1800
 
@@ -56,7 +57,9 @@ class Settings(BaseSettings):
         """공고 md를 내보낼 claude_resume 저장소 루트."""
         if self.resume_repo_path is not None:
             return self.resume_repo_path.expanduser()
-        return self.resume_path.expanduser().resolve().parent.parent
+        p = self.resume_path.expanduser().resolve()
+        # 폴더(.../claude_resume/공통)면 한 단계, 파일이면 두 단계 위
+        return p.parent if p.is_dir() else p.parent.parent
 
     @property
     def it_company_whitelist_list(self) -> list[str]:
