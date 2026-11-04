@@ -56,8 +56,9 @@ def build_analysis_prompt(days: int, limit: int) -> str:
 2. 이력서 역량 프로파일 확보 (세션 1회):
    - `from job_crawler.resume.loader import load_resume, load_profile_cache, save_profile_cache`
    - `cached = load_profile_cache()` → 있으면 그대로 역량 기준으로 사용 (재도출 금지)
-   - 없으면 `load_resume()` 로 이력서를 읽어 핵심 역량·강점·도메인·연차 요약 dict를 만들고
+   - 없으면 `load_resume().raw_text`(이력서+경력기술서 원문)를 읽어 핵심 역량·강점·도메인·연차 요약 dict를 만들고
      `save_profile_cache(profile)` 로 저장한 뒤 그 프로파일을 기준으로 사용
+     (name/experiences/total_experience_years 등 파싱 필드는 이력서 양식에 따라 비거나 0일 수 있으니 근거로 쓰지 않는다)
 3. 각 공고를 역량 프로파일과 비교해 아래 스키마로 평가
 4. `save_claude_scores(scores)` 로 저장 (또는 점수 리스트를 stdin JSON으로 `jc-score`에 전달)
 

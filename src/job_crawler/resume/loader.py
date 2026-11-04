@@ -177,6 +177,38 @@ def _parse_bullet_list(block: str) -> list[str]:
     return items
 
 
+_VERSION_RE = re.compile(r"^(?P<base>.+)_v(?P<ver>\d+)$")
+
+
+def _doc_order(base: str) -> int:
+    # 구조 파싱은 첫 파일 기준이라 이력서를 맨 앞에 둔다
+    return 1 if "경력기술서" in base else 0
+
+
+def resolve_resume_files(path: str | Path) -> list[Path]:
+    """이력서 경로를 실제 읽을 파일 목록으로 변환.
+
+    파일이면 그대로, 폴더면 `메인_*_v{N}.md`를 종류(이력서/경력기술서)별로 묶어
+    버전이 가장 높은 파일 하나씩 고른다. 통합본은 두 문서의 합본이라 제외한다.
+    """
+    p = Path(path).expanduser()
+    if not p.is_dir():
+        return [p]
+    latest: dict[str, tuple[int, Path]] = {}
+    for f in p.glob("메인_*.md"):
+        m = _VERSION_RE.match(f.stem)
+        if not m:
+            continue
+        base, ver = m.group("base"), int(m.group("ver"))
+        if "통합" in base:
+            continue
+        if base not in latest or ver > latest[base][0]:
+            latest[base] = (ver, f)
+    if not latest:
+        raise FileNotFoundError(f"메인_*_v*.md 파일 없음: {p}")
+    return [latest[b][1] for b in sorted(latest, key=lambda b: (_doc_order(b), b))]
+
+
 def load_resume(path: str | Path | None = None) -> ResumeProfile:
     if path is None:
         from ..config import get_settings
@@ -184,7 +216,9 @@ def load_resume(path: str | Path | None = None) -> ResumeProfile:
         p = get_settings().resume_path
     else:
         p = Path(path)
-    md = p.read_text(encoding="utf-8")
+    files = resolve_resume_files(p)
+    md = files[0].read_text(encoding="utf-8")
+    raw_text = "\n\n".join(f.read_text(encoding="utf-8") for f in files)
     sections = _split_sections(md)
 
     name, contact = _parse_header(sections.get("_header", ""))
@@ -226,7 +260,7 @@ def load_resume(path: str | Path | None = None) -> ResumeProfile:
         education=education,
         schools=schools,
         certs=certs,
-        raw_text=md,
+        raw_text=raw_text,
     )
 
 
@@ -244,9 +278,12 @@ def _resume_path() -> Path:
 
 
 def resume_content_hash(path: str | Path | None = None) -> str:
-    """이력서 본문 sha256 해시 (캐시 무효화 키)."""
+    """이력서 본문 sha256 해시 (캐시 무효화 키). 폴더면 선택된 파일 전체 기준."""
     p = Path(path) if path is not None else _resume_path()
-    return hashlib.sha256(p.read_bytes()).hexdigest()
+    h = hashlib.sha256()
+    for f in resolve_resume_files(p):
+        h.update(f.read_bytes())
+    return h.hexdigest()
 
 
 def load_profile_cache(path: str | Path | None = None) -> dict | None:

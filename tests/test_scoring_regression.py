@@ -1,7 +1,7 @@
 """골든셋 회귀 테스트 — 스코어링 점수 품질이 임계 이하로 유지되는지 가드.
 
 LLM은 비결정적이라 테스트에서 직접 호출하지 않는다. 대신:
-- `golden/golden_set.json`: 사람 정답 라벨이 붙은 골든셋 20건 (입력 본문 포함)
+- `golden/golden_set.json`: 사람 정답 라벨이 붙은 골든셋 30건 (익명화. 원본 본문은 로컬 전용 `golden/골든셋_원본.json`)
 - `golden/baseline_scores.json`: 현재 프롬프트로 평가한 점수 (회귀 기준선)
 
 프롬프트(`contract.build_analysis_prompt`)를 바꾸면 골든셋을 재평가해 baseline_scores.json을

@@ -62,7 +62,7 @@ pytest tests/test_resume_loader.py  # 단일 파일
 
 프로젝트 로컬 슬래시 명령. Claude Code 세션에서 `/crawl`, `/analyze`, `/check-daemon`, `/cleanup` 으로 호출.
 
-`/crawl`, `/analyze`는 frontmatter에 `model: claude-sonnet-5`, `effort: xhigh`가 고정되어 세션 모델과 무관하게 해당 설정으로 실행됨 (frontmatter는 정적 YAML이라 env 참조 불가). `/analyze` 병렬 배치의 서브에이전트도 `model: "sonnet"`으로 호출. `jc-scheduler`의 자동분석(`_run_analysis`)은 `config.get_analysis_model_settings()`를 통해 `.env`의 `ANALYSIS_MODEL`/`ANALYSIS_EFFORT`/`ANALYSIS_TIMEOUT_SEC`(기본 claude-sonnet-5 / xhigh / 1800초)로 설정. 미평가 재검사 창은 `scheduler.py`의 `_ANALYSIS_LOOKBACK_DAYS`(기본 3일) — 특정 회차의 `claude -p`가 무진행으로 실패해도 이후 회차에서 최대 3일간 재시도 대상에 남도록 함.
+`/crawl`, `/analyze`는 frontmatter에 `model: claude-sonnet-5-5`, `effort: xhigh`가 고정되어 세션 모델과 무관하게 해당 설정으로 실행됨 (frontmatter는 정적 YAML이라 env 참조 불가). `/analyze` 병렬 배치의 서브에이전트도 `model: "sonnet"`으로 호출. `jc-scheduler`의 자동분석(`_run_analysis`)은 `config.get_analysis_model_settings()`를 통해 `.env`의 `ANALYSIS_MODEL`/`ANALYSIS_EFFORT`/`ANALYSIS_TIMEOUT_SEC`(기본 claude-sonnet-5-5 / xhigh / 1800초)로 설정. 미평가 재검사 창은 `scheduler.py`의 `_ANALYSIS_LOOKBACK_DAYS`(기본 3일) — 특정 회차의 `claude -p`가 무진행으로 실패해도 이후 회차에서 최대 3일간 재시도 대상에 남도록 함.
 
 - `/crawl [limit=300] [--analyze]`: `jc-crawl --limit LIMIT` 실행 → 최근 30분 내 `CrawlRun` 이력을 사이트별로 조회해 fetched/new_jobs/status 요약 출력. `--analyze` 시 완료 후 `/analyze`(days=1)를 이어서 실행
 - `/analyze [days=7] [limit=전체건수]`: `count_unscored_jobs()` 로 미평가 건수 확인 → 0건이면 종료. limit 미지정 시 이 건수(N)를 그대로 사용해 전체를 조회(20건 초과는 병렬 배치가 규모를 흡수하므로 임의 상한 없음) → `build_analysis_prompt()` 로 출력된 절차(이력서 프로파일 비교·채점 규칙 적용·이미지 공고 시각 분석)를 따라 평가 → `save_claude_scores()` 저장 → 잔여 미평가 건수 재조회 후 보고
@@ -195,6 +195,13 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 > **이력서 역량 프로파일 캐싱**: `resume/loader.py`의 `load_profile_cache()`/`save_profile_cache()`가
 > 이력서 본문 sha256 해시를 키로 `data/resume_profile.json`에 LLM 역량 스냅샷을 캐싱.
 > 분석 시 캐시 적중이면 역량 재도출 금지(드리프트 감소·토큰 절감), 이력서 변경 시 해시 불일치로 자동 무효화.
+> `RESUME_PATH`가 **폴더**(`claude_resume/공통`)면 `resolve_resume_files()`가 `메인_*_v{N}.md`를 종류(이력서/경력기술서)별로
+> 묶어 버전 숫자가 가장 높은 파일을 하나씩 골라 합쳐 읽는다(`raw_text`/해시 모두 합본 기준이라 하나만 새 버전이 생겨도 캐시
+> 무효화). `통합` 이 들어간 통합본은 제외 — 측정 결과 통합본 줄의 99%(91/92)가 이력서/경력기술서에 그대로 있고 더 오래된
+> 판본이라 옛 표현만 섞인다. 버전 접미사 없는 파일/`메인_` 아닌 파일도 무시. 구조 파싱(이름/경력/기술스택)은 이력서 파일
+> 하나만 대상인데 v5 이력서는 HTML 머리말 형식이라 이름/연차를 못 뽑는다(`total_experience_years=0`). 그래서 분석
+> 프롬프트는 프로파일 재도출 시 **`raw_text`만 근거로 쓰도록** 명시한다(`RESUME_PATH`를 지정해 돌리면
+> `test_resume_loader.py` 4건이 실패하는 것도 같은 원인).
 
 > **스코어 포맷·verdict 기준·분석 프롬프트의 단일 출처: `scoring/contract.py`**
 > `verdict_for_rate()`, `SCORE_SCHEMA`, `build_analysis_prompt()` 참조.
@@ -212,14 +219,14 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 4. 대시보드 `?sort=rate` 로 합격률 순 정렬 확인
 
 > **골든셋 회귀 테스트** (`tests/test_scoring_regression.py`, `tests/golden/`): 채점 룰/프롬프트 변경 시
-> 점수 드리프트 가드. `golden_set.json`(사람 정답 라벨 30건+본문) + `baseline_scores.json`(현재 프롬프트
+> 점수 드리프트 가드. `golden_set.json`(사람 정답 라벨 30건, 회사/제목/본문 익명화. 재평가용 원본 본문은 gitignore된 로컬 전용 `골든셋_원본.json`) + `baseline_scores.json`(현재 프롬프트
 > 평가 기준선) + `scoring/eval.py`(`match_rate_mae`/`verdict_agreement`). LLM은 테스트에서 호출 안 함 —
 > **프롬프트 바꾸면 골든셋을 현재 프롬프트로 재평가 → `baseline_scores.json` 갱신** → 테스트가 사람 라벨
 > 대비 MAE≤12.0·verdict 일치≥60% 가드. 현재 baseline MAE 9.0(verdict 80%). 사람 정답 라벨 원본은
 > `tests/golden/골든셋_라벨링.md`·`tests/golden/골든셋_라벨링_2차.md`. 표본 추출은 `extract_golden*.sql`로 재현.
 
 > **라벨링 정책**: 주력 언어(Java)와 다른 필수 언어를 요구하는 공고는 **부분 적합(35~50)** 으로 일관
-> 채점(백엔드 설계·DB·API 역량 전이 인정). 골든셋 내 동일 상황을 0/40/75로 달리 매겼던 비일관(NHN·리디·모카)을
+> 채점(백엔드 설계·DB·API 역량 전이 인정). 골든셋 내 동일 상황을 0/40/75로 달리 매겼던 비일관(3건)을
 > 40으로 통일 → MAE 10.5→9.0. 골든셋은 회귀 baseline이므로 **케이스 패치 금지, 일반 정책만 추가**(과적합 방지).
 
 **이미지 공고 처리** (`is_image_only=True`인 공고):
@@ -251,7 +258,7 @@ FastAPI + Jinja2 + HTMX. 라우터:
 > 중복 판정 근거는 `공고_*.md` 안의 `job_crawler id: {id}` 줄 하나뿐이라 **이 줄을 지우면 재클릭 시 새 파일이 생긴다**.
 > 같은 회사에 다른 포지션이 이미 있으면 덮어쓰지 않고 `공고_{회사}_{직무슬러그}.md`로 새로 만든다.
 > 회사 폴더는 저장소 전체를 `rglob`으로 훑어 **`company` 값과 정확히 같은 이름**의 디렉터리를 재사용하므로
-> (`서류통과/`·`서류탈락/` 하위도 포함), 공고의 `company`가 기존 폴더명과 다르면(예: 폴더 `LINE` vs company `LINE Pay Plus`)
+> (`서류통과/`·`서류탈락/` 하위도 포함), 공고의 `company`가 기존 폴더명과 다르면(예: 폴더 `ABC` vs company `ABC Pay`)
 > 루트에 새 폴더가 생긴다 — 유사 이름 자동 매칭은 오폴더 위험이 커서 의도적으로 안 함.
 > 저장소 경로는 `.env`의 `RESUME_REPO_PATH`, 미설정 시 `RESUME_PATH`의 상위 2단계에서 유도.
 > 내보내기가 실패해도 상태 변경은 유지하고 버튼 옆에 실패 칩만 띄운다(경로 문제로 대시보드 조작이 막히지 않게).
@@ -288,7 +295,7 @@ FastAPI + Jinja2 + HTMX. 라우터:
 ### 설정 (`config.py`)
 
 `pydantic-settings` 기반, `.env` 파일 로드. `get_settings()` 로 싱글톤 접근.
-주요 설정: `DESIRED_ROLES`, `DESIRED_REGIONS`, `DESIRED_POSITIONS`, `BLACKLIST_COMPANIES`, `REQUIRED_KEYWORDS`, `CRAWL_CONCURRENCY`, `RESUME_PATH`, `RESUME_REPO_PATH`(지원예정 내보내기 대상, 미설정 시 `RESUME_PATH`에서 유도)
+주요 설정: `DESIRED_ROLES`, `DESIRED_REGIONS`, `DESIRED_POSITIONS`, `BLACKLIST_COMPANIES`, `REQUIRED_KEYWORDS`, `CRAWL_CONCURRENCY`, `RESUME_PATH`(파일 또는 `claude_resume/공통` 폴더 — 폴더면 이력서/경력기술서 종류별 최신 버전 자동 선택), `RESUME_REPO_PATH`(지원예정 내보내기 대상, 미설정 시 `RESUME_PATH`에서 유도 — 폴더면 한 단계, 파일이면 두 단계 위)
 
 ## 새 사이트 추가 패턴
 
