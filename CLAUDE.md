@@ -219,14 +219,14 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 4. 대시보드 `?sort=rate` 로 합격률 순 정렬 확인
 
 > **골든셋 회귀 테스트** (`tests/test_scoring_regression.py`, `tests/golden/`): 채점 룰/프롬프트 변경 시
-> 점수 드리프트 가드. `golden_set.json`(사람 정답 라벨 30건+본문) + `baseline_scores.json`(현재 프롬프트
+> 점수 드리프트 가드. `golden_set.json`(사람 정답 라벨 30건, 회사/제목/본문 익명화. 재평가용 원본 본문은 gitignore된 로컬 전용 `골든셋_원본.json`) + `baseline_scores.json`(현재 프롬프트
 > 평가 기준선) + `scoring/eval.py`(`match_rate_mae`/`verdict_agreement`). LLM은 테스트에서 호출 안 함 —
 > **프롬프트 바꾸면 골든셋을 현재 프롬프트로 재평가 → `baseline_scores.json` 갱신** → 테스트가 사람 라벨
 > 대비 MAE≤12.0·verdict 일치≥60% 가드. 현재 baseline MAE 9.0(verdict 80%). 사람 정답 라벨 원본은
 > `tests/golden/골든셋_라벨링.md`·`tests/golden/골든셋_라벨링_2차.md`. 표본 추출은 `extract_golden*.sql`로 재현.
 
 > **라벨링 정책**: 주력 언어(Java)와 다른 필수 언어를 요구하는 공고는 **부분 적합(35~50)** 으로 일관
-> 채점(백엔드 설계·DB·API 역량 전이 인정). 골든셋 내 동일 상황을 0/40/75로 달리 매겼던 비일관(NHN·리디·모카)을
+> 채점(백엔드 설계·DB·API 역량 전이 인정). 골든셋 내 동일 상황을 0/40/75로 달리 매겼던 비일관(3건)을
 > 40으로 통일 → MAE 10.5→9.0. 골든셋은 회귀 baseline이므로 **케이스 패치 금지, 일반 정책만 추가**(과적합 방지).
 
 **이미지 공고 처리** (`is_image_only=True`인 공고):
@@ -258,7 +258,7 @@ FastAPI + Jinja2 + HTMX. 라우터:
 > 중복 판정 근거는 `공고_*.md` 안의 `job_crawler id: {id}` 줄 하나뿐이라 **이 줄을 지우면 재클릭 시 새 파일이 생긴다**.
 > 같은 회사에 다른 포지션이 이미 있으면 덮어쓰지 않고 `공고_{회사}_{직무슬러그}.md`로 새로 만든다.
 > 회사 폴더는 저장소 전체를 `rglob`으로 훑어 **`company` 값과 정확히 같은 이름**의 디렉터리를 재사용하므로
-> (`서류통과/`·`서류탈락/` 하위도 포함), 공고의 `company`가 기존 폴더명과 다르면(예: 폴더 `LINE` vs company `LINE Pay Plus`)
+> (`서류통과/`·`서류탈락/` 하위도 포함), 공고의 `company`가 기존 폴더명과 다르면(예: 폴더 `ABC` vs company `ABC Pay`)
 > 루트에 새 폴더가 생긴다 — 유사 이름 자동 매칭은 오폴더 위험이 커서 의도적으로 안 함.
 > 저장소 경로는 `.env`의 `RESUME_REPO_PATH`, 미설정 시 `RESUME_PATH`의 상위 2단계에서 유도.
 > 내보내기가 실패해도 상태 변경은 유지하고 버튼 옆에 실패 칩만 띄운다(경로 문제로 대시보드 조작이 막히지 않게).
