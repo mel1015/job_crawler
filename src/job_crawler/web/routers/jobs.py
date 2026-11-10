@@ -12,13 +12,16 @@ from sqlalchemy.orm import defer, joinedload, selectinload
 
 from ...db.models import ApplicationEvent, Job, ScoreResult
 from ...db.session import session_scope
-from ...filters.criteria import target_tier
+from ...filters.criteria import employment_kind, extract_min_years, target_tier
 from ...resume.export import export_job
 from ..templating import templates
 
 router = APIRouter()
 
-VALID_TIERS = {"1", "2", "3", "hold", "none"}
+VALID_TIERS = {"1", "2", "3", "relay", "hold", "none", "target"}
+# "target": 지원 우선순위 등급 전체(1/2/3/연계). "맞춤" 프리셋이 쓴다
+TARGET_TIERS = {"1", "2", "3", "relay"}
+VALID_EMPLOYMENTS = {"regular", "contract", "freelance"}
 
 COMPANY_TYPES = ["대기업", "중견기업", "중소기업", "공기업", "외국계", "스타트업", "금융업"]
 VALID_COMPANY_TYPES = set(COMPANY_TYPES) | {"none"}
@@ -38,6 +41,8 @@ VALID_APP_STATUSES = {
     "final_passed",
     "final_rejected",
 }
+
+REJECTED_STATUSES = {"doc_rejected", "final_rejected"}
 
 # "지원완료" 필터 전용 정렬 우선순위 (낮을수록 먼저 표시). 결과대기(None)는 서류합격 바로 앞에 배치
 APP_STATUS_ORDER = {
@@ -60,7 +65,11 @@ def index(
     status: str | None = Query(
         None, description="scored | unscored | planned | applied | ignored | closed"
     ),
-    tier: str | None = Query(None, description="1 | 2 | 3 | hold | none"),
+    tier: str | None = Query(None, description="1 | 2 | 3 | relay | hold | none | target"),
+    max_years: str | None = Query(
+        None, description="요구 경력 하한이 N년 이하인 공고만 (미표기 포함)"
+    ),
+    employment: str | None = Query(None, description="regular | contract | freelance"),
     company_type: str | None = Query(None, description="대기업 | 중견기업 | ... | none(미분류)"),
     q: str | None = Query(None),
     sort: str = Query("rate", description="latest | rate"),
@@ -70,6 +79,11 @@ def index(
     status = status or None
     tier = tier if tier in VALID_TIERS else None
     company_type = company_type if company_type in VALID_COMPANY_TYPES else None
+    employment = employment if employment in VALID_EMPLOYMENTS else None
+    try:
+        max_years_val: int | None = int(max_years) if max_years else None
+    except ValueError:
+        max_years_val = None
     q = q or None
     min_rate_val: int | None
     try:
@@ -149,8 +163,25 @@ def index(
             jobs = [j for j in jobs if j.site == site]
         if tier:
             # "none": 타겟 외 공고만 (1장 우선순위에 해당하지 않는 공고)
-            want = "" if tier == "none" else tier
-            jobs = [j for j in jobs if target_tier(j.company, j.title) == want]
+            if tier == "target":
+                jobs = [j for j in jobs if target_tier(j.company, j.title) in TARGET_TIERS]
+            else:
+                want = "" if tier == "none" else tier
+                jobs = [j for j in jobs if target_tier(j.company, j.title) == want]
+        if max_years_val is not None:
+            # 하한 미표기(None) 공고는 남긴다. 경력 무관/협의 공고를 잃지 않기 위함
+            jobs = [
+                j
+                for j in jobs
+                if (y := extract_min_years(f"{j.experience or ''}\n{j.body_text or ''}")) is None
+                or y <= max_years_val
+            ]
+        if employment:
+            jobs = [
+                j
+                for j in jobs
+                if employment_kind(j.employment_type, j.title, j.body_text or "") == employment
+            ]
         if company_type:
             want_type = None if company_type == "none" else company_type
             jobs = [j for j in jobs if j.company_type == want_type]
@@ -191,6 +222,9 @@ def index(
             )
         else:
             jobs.sort(key=lambda j: j.first_seen_at, reverse=True)
+        if status != "applied" and status not in VALID_APP_STATUSES:
+            # 이미 탈락한 공고는 다시 볼 일이 없어 합격률이 높아도 맨 뒤로 보낸다 (안정 정렬이라 기존 순서 유지)
+            jobs.sort(key=lambda j: j.application_status in REJECTED_STATUSES)
 
         # 필터 적용된 전체 매치 수(페이지 슬라이싱 전) — 카운트 표시·페이지 계산용
         filtered_count = len(jobs)
@@ -209,6 +243,8 @@ def index(
                 ("min_rate", min_rate_val if min_rate_val is not None else ""),
                 ("status", status or ""),
                 ("tier", tier or ""),
+                ("max_years", max_years_val if max_years_val is not None else ""),
+                ("employment", employment or ""),
                 ("company_type", company_type or ""),
                 ("q", q or ""),
                 ("sort", sort),
@@ -237,6 +273,8 @@ def index(
                     "min_rate": min_rate_val if min_rate_val is not None else "",
                     "status": status or "",
                     "tier": tier or "",
+                    "max_years": max_years_val if max_years_val is not None else "",
+                    "employment": employment or "",
                     "company_type": company_type or "",
                     "q": q or "",
                     "sort": sort,

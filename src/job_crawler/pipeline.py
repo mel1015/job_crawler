@@ -18,21 +18,29 @@ from .filters.criteria import pass_filters
 from .logging_setup import setup_logging
 
 
+def search_plan(settings) -> list[tuple[str, bool]]:
+    """(키워드, 경력 조건 적용 여부) 목록. 경력 무관 키워드는 경력 조건 없이 추가 검색한다."""
+    plan = [(kw, True) for kw in (settings.roles_list or [""])]
+    plan += [(kw, False) for kw in settings.any_experience_roles_list]
+    return plan
+
+
 async def crawl_site(site: str, max_results: int) -> tuple[int, int, list[str]]:
     """키워드별로 각각 검색 → 결과 병합(dedupe) → 상세 조회 → DB upsert."""
     settings = get_settings()
     crawler: BaseCrawler = build_crawler(site)
-    keywords = settings.roles_list or [""]
+    plan = search_plan(settings)
+    keywords = [kw for kw, _ in plan]
 
     errors: list[str] = []
     merged: dict[str, JobSummary] = {}
     try:
-        for kw in keywords:
+        for kw, with_years in plan:
             criteria = SearchCriteria(
                 keywords=[kw] if kw else [],
                 regions=settings.regions_list,
-                years_min=settings.desired_experience_min or None,
-                years_max=settings.desired_experience_max or None,
+                years_min=(settings.desired_experience_min or None) if with_years else None,
+                years_max=(settings.desired_experience_max or None) if with_years else None,
                 max_results=max_results,
             )
             try:

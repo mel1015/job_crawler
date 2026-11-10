@@ -1,7 +1,8 @@
 """골든셋 회귀 테스트 — 스코어링 점수 품질이 임계 이하로 유지되는지 가드.
 
 LLM은 비결정적이라 테스트에서 직접 호출하지 않는다. 대신:
-- `golden/golden_set.json`: 사람 정답 라벨이 붙은 골든셋 30건 (익명화. 원본 본문은 로컬 전용 `golden/골든셋_원본.json`)
+- `golden/golden_set.json`: 사람 정답 라벨이 붙은 골든셋 30건
+  (익명화. 원본 본문은 로컬 전용 `golden/골든셋_원본.json`)
 - `golden/baseline_scores.json`: 현재 프롬프트로 평가한 점수 (회귀 기준선)
 
 프롬프트(`contract.build_analysis_prompt`)를 바꾸면 골든셋을 재평가해 baseline_scores.json을
@@ -14,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from job_crawler.scoring.eval import match_rate_mae, verdict_agreement
+from job_crawler.scoring.eval import match_rate_mae, outcome_auc, verdict_agreement
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 
@@ -23,6 +24,13 @@ GOLDEN_DIR = Path(__file__).parent / "golden"
 # 회귀 가드 임계는 12.0 (룰 적용 전 수준으로 퇴행하면 실패, 현재는 여유).
 MAE_THRESHOLD = 12.0
 VERDICT_AGREEMENT_MIN = 0.60
+
+# 서류 결과(통과/탈락) 대비 점수 판별력. 결과 데이터는 개인 지원 이력이라 로컬 전용
+# (gitignore된 골든셋_결과*.json)이고, 파일이 없으면 이 가드는 skip한다.
+# 통과 표본이 적어 방향 확인용으로만 쓴다
+OUTCOME_AUC_MIN = 0.65
+OUTCOME_SET = GOLDEN_DIR / "골든셋_결과셋.json"
+OUTCOME_BASELINE = GOLDEN_DIR / "골든셋_결과기준선.json"
 
 
 @pytest.fixture(scope="module")
@@ -60,6 +68,19 @@ def test_baseline_verdict_agreement(golden, baseline):
     assert agree >= VERDICT_AGREEMENT_MIN, f"verdict 일치 {agree:.0%} < {VERDICT_AGREEMENT_MIN:.0%}"
 
 
+@pytest.mark.skipif(
+    not (OUTCOME_SET.exists() and OUTCOME_BASELINE.exists()), reason="로컬 전용 결과 셋 없음"
+)
+def test_outcome_baseline_auc():
+    outcome = json.loads(OUTCOME_SET.read_text(encoding="utf-8"))
+    passed = {o["job_id"]: o["passed"] for o in outcome}
+    raw = json.loads(OUTCOME_BASELINE.read_text(encoding="utf-8"))
+    scores = {int(k): v for k, v in raw.items()}
+    assert set(scores) == set(passed), "outcome baseline과 outcome_set의 job_id 집합 불일치"
+    auc = outcome_auc(scores, passed)
+    assert auc >= OUTCOME_AUC_MIN, f"서류 결과 AUC {auc:.3f} < {OUTCOME_AUC_MIN}"
+
+
 # ── eval 함수 단위 테스트 ──────────────────────────────────────────────────────
 
 def test_match_rate_mae_basic():
@@ -79,3 +100,21 @@ def test_match_rate_mae_raises_when_no_pairs():
 def test_verdict_agreement():
     # 50→애매 vs 라벨 55→애매(일치), 90→강한매치 vs 라벨 30→부적합(불일치)
     assert verdict_agreement({1: 50, 2: 90}, {1: 55, 2: 30}) == 0.5
+
+
+# ── 서류 결과 기반 eval (outcome_auc) ─────────────────────────────────────────
+
+def test_outcome_auc_perfect_and_inverse():
+    passed = {1: True, 2: False, 3: False}
+    assert outcome_auc({1: 90, 2: 50, 3: 40}, passed) == 1.0
+    assert outcome_auc({1: 30, 2: 50, 3: 40}, passed) == 0.0
+
+
+def test_outcome_auc_ties_count_half_and_skip_none():
+    # 양성 1(70) vs 음성 2(70) 동점 0.5, 음성 3은 None이라 제외
+    assert outcome_auc({1: 70, 2: 70, 3: None}, {1: True, 2: False, 3: False}) == 0.5
+
+
+def test_outcome_auc_raises_without_both_classes():
+    with pytest.raises(ValueError):
+        outcome_auc({1: 70, 2: 60}, {1: False, 2: False})

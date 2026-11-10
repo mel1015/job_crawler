@@ -49,9 +49,9 @@ POSITION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 
 
 # 지원 타겟 우선순위 (claude_resume/공통/기술보강_실행계획_2026-07.md 1장 기준)
-# 1순위: 금융사 IT 직군 직고용 (캐피탈, 카드, 저축은행, 보험)
+# 1순위: 금융사 IT 직군 직고용 (캐피탈, 카드, 저축은행, 보험, 증권)
 _TIER1_PAT = re.compile(
-    r"캐피탈|캐피털|저축은행|여신금융"
+    r"캐피탈|캐피털|저축은행|여신금융|증권"
     r"|신한카드|삼성카드|현대카드|롯데카드|국민카드|KB카드|우리카드|하나카드|BC카드|비씨카드"
     r"|생명보험|손해보험|화재해상|해상화재|생명(?:\s|$)|화재(?:\s|$)|보험",
     re.I,
@@ -74,11 +74,25 @@ _TIER3_DOMAIN_PAT = re.compile(
 _HOLD_COMPANY_PAT = re.compile(
     r"카카오페이|토스페이먼츠|토스증권|비바리퍼블리카|트래블월렛|트레블월렛", re.I
 )
+# 보류: 지원자가 몰리는 1군 프로덕트사. 2군 금융사 공고보다 우선순위를 낮추기 위한 분류이며,
+# 인터넷은행 도메인 포지션(3순위) 판정 뒤에 적용한다 (카카오뱅크가 "카카오"에 먼저 걸리지 않게)
+_TOP_PRODUCT_PAT = re.compile(
+    r"네이버|NAVER|카카오|쿠팡|당근|^LINE|라인플러스|우아한형제들|배달의민족|빗썸|두나무|토스",
+    re.I,
+)
+# 연계/중계: 펌뱅킹, PG, VAN, 연계솔루션 회사. 업무 계층 경험은 맞지만 통신 계층(소켓, 전문 조립,
+# 재전송) 구현 경험을 깊게 묻는 경우가 많아 별도 등급으로 분리한다
+_RELAY_PAT = re.compile(
+    r"더즌|dozn|인젠트|쿠콘|웹케시|핑거|KICC|한국정보통신|나이스정보통신|NICE정보통신"
+    r"|이니시스|세틀뱅크|헥토파이낸셜|KCP|다날",
+    re.I,
+)
 
 TARGET_TIER_LABELS = {
     "1": "1순위 금융사",
     "2": "2순위 금융IT",
     "3": "3순위 도메인",
+    "relay": "연계/중계",
     "hold": "지원 보류",
 }
 
@@ -86,7 +100,7 @@ TARGET_TIER_LABELS = {
 def target_tier(company: str, title: str = "") -> str:
     """회사명과 공고 제목으로 지원 우선순위를 분류한다.
 
-    반환: "1" | "2" | "3" | "hold" | ""(타겟 외)
+    반환: "1" | "2" | "3" | "relay" | "hold" | ""(타겟 외)
     """
     company = company or ""
     title = title or ""
@@ -95,10 +109,59 @@ def target_tier(company: str, title: str = "") -> str:
     if _TIER3_COMPANY_PAT.search(company):
         # 인터넷은행은 도메인 명시 포지션만 3순위, 플랫폼/공통 개발은 보류
         return "3" if _TIER3_DOMAIN_PAT.search(title) else "hold"
+    if _TOP_PRODUCT_PAT.search(company):
+        return "hold"
+    if _RELAY_PAT.search(company):
+        return "relay"
     if _TIER1_PAT.search(company):
         return "1"
     if _TIER2_PAT.search(company):
         return "2"
+    return ""
+
+
+# 경력 하한: "N년 이상", "N년↑", "N~M년". 회사 연혁("설립 30년 이상") 같은 큰 수는 제외
+_MIN_YEARS_PAT = re.compile(r"(\d{1,2})\s*년\s*(?:이상|↑)|(\d{1,2})\s*[~\-]\s*\d{1,2}\s*년")
+_MAX_REASONABLE_YEARS = 20
+
+
+def extract_min_years(text: str) -> int | None:
+    """공고 본문에서 요구 경력 하한(년)을 뽑는다. 여러 개면 가장 작은 값, 없으면 None."""
+    years = [
+        int(a or b)
+        for a, b in _MIN_YEARS_PAT.findall(text or "")
+        if int(a or b) <= _MAX_REASONABLE_YEARS
+    ]
+    return min(years) if years else None
+
+
+_FREELANCE_PAT = re.compile(r"프리랜서|도급|외주", re.I)
+_CONTRACT_PAT = re.compile(r"계약직|파견|연봉계약|촉탁", re.I)
+_EMPLOYMENT_FIELD_PAT = re.compile(r"(?:근무|고용)\s*형태\s*[:：]?\s*([^\n]{0,40})")
+
+
+def employment_kind(employment_type: str | None, title: str, body: str = "") -> str:
+    """고용형태를 "regular" | "contract" | "freelance" | ""(미상)로 정규화한다.
+
+    사이트가 준 employment_type이 비어 있는 공고가 많아(열린 공고의 약 60%) 제목, 본문 순으로 보정한다.
+    """
+    for text in (employment_type or "", title or ""):
+        if _FREELANCE_PAT.search(text):
+            return "freelance"
+        if _CONTRACT_PAT.search(text):
+            return "contract"
+    if employment_type and "정규" in employment_type:
+        return "regular"
+    if not employment_type:
+        # 본문은 "근무형태/고용형태" 표기 뒤의 값만 본다. 업무 설명 속 "외주 관리" 같은 오탐 방지
+        m = _EMPLOYMENT_FIELD_PAT.search(body or "")
+        field = m.group(1) if m else ""
+        if _FREELANCE_PAT.search(field):
+            return "freelance"
+        if _CONTRACT_PAT.search(field):
+            return "contract"
+        if "정규" in field:
+            return "regular"
     return ""
 
 
