@@ -39,3 +39,17 @@ def verdict_agreement(scores: dict[int, int | None], golden: dict[int, int]) -> 
         and verdict_for_rate(scores[i]) == verdict_for_rate(golden[i])
     )
     return hit / len(golden)
+
+
+def outcome_auc(scores: dict[int, int | None], passed: dict[int, bool]) -> float:
+    """점수가 실제 서류 통과를 얼마나 잘 가르는지 (ROC AUC, 0.0~1.0, 0.5=무작위).
+
+    Mann-Whitney 방식: 통과 공고 점수가 탈락 공고 점수보다 높은 쌍의 비율(동점 0.5).
+    None 점수는 제외. 통과/탈락 중 한쪽이라도 비면 ValueError.
+    """
+    pos = [scores[i] for i, ok in passed.items() if ok and scores.get(i) is not None]
+    neg = [scores[i] for i, ok in passed.items() if not ok and scores.get(i) is not None]
+    if not pos or not neg:
+        raise ValueError("통과/탈락 양쪽 표본이 모두 필요합니다")
+    wins = sum(1.0 if p > n else 0.5 if p == n else 0.0 for p in pos for n in neg)
+    return wins / (len(pos) * len(neg))
