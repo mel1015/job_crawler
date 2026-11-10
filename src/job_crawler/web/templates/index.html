@@ -71,11 +71,31 @@
     <span class="ic">🎯</span>
     <select name="tier" onchange="this.form.submit()">
       <option value="">지원 타겟</option>
+      <option value="target" {% if filters.tier == 'target' %}selected{% endif %}>타겟 전체 (1/2/3/연계)</option>
       <option value="1" {% if filters.tier == '1' %}selected{% endif %}>1순위 금융사</option>
       <option value="2" {% if filters.tier == '2' %}selected{% endif %}>2순위 금융IT</option>
       <option value="3" {% if filters.tier == '3' %}selected{% endif %}>3순위 도메인</option>
+      <option value="relay" {% if filters.tier == 'relay' %}selected{% endif %}>연계/중계</option>
       <option value="hold" {% if filters.tier == 'hold' %}selected{% endif %}>지원 보류</option>
       <option value="none" {% if filters.tier == 'none' %}selected{% endif %}>타겟 외</option>
+    </select>
+  </div>
+  <div class="field">
+    <span class="ic">⏳</span>
+    <select name="max_years" onchange="this.form.submit()">
+      <option value="">요구 경력</option>
+      {% for y in [1, 2, 3, 4] %}
+      <option value="{{ y }}" {% if filters.max_years == y %}selected{% endif %}>{{ y }}년 이하</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <span class="ic">📄</span>
+    <select name="employment" onchange="this.form.submit()">
+      <option value="">고용형태</option>
+      <option value="regular" {% if filters.employment == 'regular' %}selected{% endif %}>정규직</option>
+      <option value="contract" {% if filters.employment == 'contract' %}selected{% endif %}>계약직/파견</option>
+      <option value="freelance" {% if filters.employment == 'freelance' %}selected{% endif %}>프리랜서</option>
     </select>
   </div>
   <div class="field">
@@ -100,10 +120,11 @@
     </select>
   </div>
   <button class="btn sm" type="submit">적용</button>
+  <a class="btn ghost sm" href="/?tier=target&max_years=3" title="지원 타겟 등급 + 요구 경력 3년 이하 (계약직 포함)">맞춤</a>
   <span class="count"><span class="n">{{ filtered_count }}</span> / {{ stats.total }}건</span>
 </form>
 
-{% set has_filter = filters.q or filters.site or filters.status or filters.min_rate or filters.tier or filters.company_type %}
+{% set has_filter = filters.q or filters.site or filters.status or filters.min_rate or filters.tier or filters.company_type or filters.max_years or filters.employment %}
 {% if has_filter %}
 <div class="active-filters">
   <span class="af-label">적용된 필터:</span>
@@ -111,7 +132,9 @@
   {% if filters.site %}<span class="af-chip">{{ filters.site | upper }}</span>{% endif %}
   {% set status_labels = {'scored': '평가완료', 'unscored': '미평가', 'applied': '지원완료', 'doc_passed': '서류합격', 'doc_rejected': '서류탈락', 'coding_test': '코딩테스트', 'job_interview': '직무면접', 'exec_interview': '임원면접', 'final_passed': '최종합격', 'final_rejected': '최종탈락', 'ignored': '관심없음', 'closed': '마감'} %}
   {% if filters.status %}<span class="af-chip">{{ status_labels.get(filters.status, filters.status) }}</span>{% endif %}
-  {% if filters.tier %}<span class="af-chip">{{ TARGET_TIER_LABELS.get(filters.tier, '타겟 외') }}</span>{% endif %}
+  {% if filters.tier %}<span class="af-chip">{{ '타겟 전체' if filters.tier == 'target' else TARGET_TIER_LABELS.get(filters.tier, '타겟 외') }}</span>{% endif %}
+  {% if filters.max_years %}<span class="af-chip">경력 {{ filters.max_years }}년 이하</span>{% endif %}
+  {% if filters.employment %}<span class="af-chip">{{ {'regular': '정규직', 'contract': '계약직/파견', 'freelance': '프리랜서'}.get(filters.employment, filters.employment) }}</span>{% endif %}
   {% if filters.company_type %}<span class="af-chip">{{ '미분류' if filters.company_type == 'none' else filters.company_type }}</span>{% endif %}
   {% if filters.min_rate %}<span class="af-chip">합격률 ≥ {{ filters.min_rate }}%</span>{% endif %}
   <a href="/" class="af-reset">전체 초기화</a>

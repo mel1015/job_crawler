@@ -6,7 +6,13 @@ import pytest
 
 from job_crawler.crawlers.base import JobSummary
 from job_crawler.filters import criteria
-from job_crawler.filters.criteria import extract_position, pass_filters, target_tier
+from job_crawler.filters.criteria import (
+    employment_kind,
+    extract_min_years,
+    extract_position,
+    pass_filters,
+    target_tier,
+)
 
 
 @pytest.mark.parametrize(
@@ -90,6 +96,13 @@ def test_pass_filters_catch_whitelist_skips_keyword(empty_settings):
         ("SBI저축은행", "자바 개발자", "1"),
         ("삼성화재해상보험", "IT 개발", "1"),
         ("신한카드", "백엔드 개발자", "1"),
+        # 1순위: 증권사 IT 직고용
+        ("OO증권", "IT 개발", "1"),
+        ("OO투자증권(주)", "백엔드 개발자", "1"),
+        # 연계/중계: 펌뱅킹/PG/VAN/연계솔루션 (통신 계층 경험을 요구하는 경우가 많음)
+        ("웹케시", "백엔드 개발자", "relay"),
+        ("쿠콘", "API 개발", "relay"),
+        ("KG이니시스", "PG 개발", "relay"),
         # 2순위: 금융지주 IT 자회사와 대기업 IT
         ("하나금융티아이", "채널계 개발", "2"),
         ("우리에프아이에스", "백엔드 개발자", "2"),
@@ -104,8 +117,12 @@ def test_pass_filters_catch_whitelist_skips_keyword(empty_settings):
         # 보류: 대규모 트래픽/MSA 중심 회사 유형
         ("카카오페이", "서버 개발자", "hold"),
         ("트래블월렛", "백엔드 개발자", "hold"),
+        # 보류: 경쟁이 몰리는 1군 프로덕트사 (서류 결과에서 확인된 유형)
+        ("네이버", "백엔드 개발자", "hold"),
+        ("쿠팡", "백엔드 개발자", "hold"),
+        ("LINE Plus", "Server Engineer", "hold"),
+        ("토스플레이스", "Server Developer", "hold"),
         # 타겟 외
-        ("네이버", "백엔드 개발자", ""),
         ("무명스타트업", "백엔드 개발자", ""),
     ],
 )
@@ -120,3 +137,39 @@ def test_pass_filters_position_whitelist(empty_settings):
     assert pass_filters(_summary("프론트엔드 개발자")) is False
     # generic "개발"은 항상 통과 (광범위 제목 누락 방지)
     assert pass_filters(_summary("Python 개발자")) is True
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("[자격 요건]\n- 관련 경력 1년 이상\n- Java 기본", 1),
+        ("백엔드 개발 경력 3년 이상\n- 운영 경험 5년 이상 우대", 3),
+        ("경력 2~5년", 2),
+        ("경력 무관, 신입 가능", None),
+        ("설립 30년 이상의 회사입니다", None),
+        ("", None),
+    ],
+)
+def test_extract_min_years(text, expected):
+    assert extract_min_years(text) == expected
+
+
+@pytest.mark.parametrize(
+    "employment_type, title, body, expected",
+    [
+        ("계약직", "IT 개발자", "", "contract"),
+        (None, "IT 개발 경력직 채용 (계약직)", "", "contract"),
+        (None, "IT 경력직(연봉계약직)", "", "contract"),
+        ("프리랜서", "금융권 SM 개발", "", "freelance"),
+        (None, "Java 개발자", "고용형태: 파견직\n근무지: 여의도", "contract"),
+        ("정규직", "백엔드 개발자", "", "regular"),
+        (None, "백엔드 개발자", "고용형태 정규직 (수습 3개월)", "regular"),
+        (None, "백엔드 개발자", "주요 업무", ""),
+        # 본문은 근무형태/고용형태 표기 뒤의 값만 본다 (업무 설명 속 단어 오탐 방지)
+        (None, "풀스택 개발자", "외주 관리 경험이 있으신 분", ""),
+        (None, "백엔드 개발자", "근로자, 프리랜서를 위한 세금 신고 서비스", ""),
+        (None, "SM 개발", "근무형태 계약직, 프리랜서 급여 면접 후 결정", "freelance"),
+    ],
+)
+def test_employment_kind(employment_type, title, body, expected):
+    assert employment_kind(employment_type, title, body) == expected

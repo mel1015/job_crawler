@@ -78,6 +78,7 @@ pytest tests/test_resume_loader.py  # 단일 파일
 
 `run()` → `crawl_site()` 순서:
 1. `DESIRED_ROLES` 키워드마다 `crawler.search()` 호출 → `external_id` 기준 dedupe
+   - `ANY_EXPERIENCE_ROLES` 키워드(SI/SM/프리랜서 등)는 경력 조건(`DESIRED_EXPERIENCE_MIN/MAX`) 없이 한 번 더 검색한다(`search_plan()`). SI/SM 공고는 경력을 "무관"이나 초급/중급/고급으로만 적어 경력 검색에서 빠진다(2026-11 측정: 사람인 키워드당 100건 기준 필터 통과 75건이 경력 조건에만 걸려 누락)
 2. `pass_filters()` 로 블랙리스트/직군/필수키워드 필터링
 3. `asyncio.gather` + `Semaphore(CRAWL_CONCURRENCY)` 로 병렬 `crawler.fetch_detail()`
 4. SQLite upsert (`_upsert_job`) + `CrawlRun` 이력 기록
@@ -222,7 +223,11 @@ SQLAlchemy 2.0 + Alembic, SQLite (`data/jobs.db`)
 > 점수 드리프트 가드. `golden_set.json`(사람 정답 라벨 30건, 회사/제목/본문 익명화. 재평가용 원본 본문은 gitignore된 로컬 전용 `골든셋_원본.json`) + `baseline_scores.json`(현재 프롬프트
 > 평가 기준선) + `scoring/eval.py`(`match_rate_mae`/`verdict_agreement`). LLM은 테스트에서 호출 안 함 —
 > **프롬프트 바꾸면 골든셋을 현재 프롬프트로 재평가 → `baseline_scores.json` 갱신** → 테스트가 사람 라벨
-> 대비 MAE≤12.0·verdict 일치≥60% 가드. 현재 baseline MAE 9.0(verdict 80%). 사람 정답 라벨 원본은
+> 대비 MAE≤12.0·verdict 일치≥60% 가드. 현재 baseline MAE 9.0(verdict 80%).
+> 서류 결과 가드(`test_outcome_baseline_auc`, `outcome_auc()`)는 결과 레이블이 개인 지원 이력이라 gitignore된 로컬 파일
+> (`tests/golden/골든셋_결과셋.json`·`골든셋_결과기준선.json`)이 있을 때만 돌고 없으면 skip한다.
+> 채점 모델/시점에 따른 점수 변동이 크다(같은 프롬프트를 sonnet 서브에이전트로 재채점하면 골든셋 MAE 9.0 -> 11.4).
+> 규칙 효과를 볼 때는 반드시 **같은 채점 모델로 이전 프롬프트 대조군을 함께 돌려** 비교한다. 사람 정답 라벨 원본은
 > `tests/golden/골든셋_라벨링.md`·`tests/golden/골든셋_라벨링_2차.md`. 표본 추출은 `extract_golden*.sql`로 재현.
 
 > **라벨링 정책**: 주력 언어(Java)와 다른 필수 언어를 요구하는 공고는 **부분 적합(35~50)** 으로 일관
@@ -285,6 +290,7 @@ FastAPI + Jinja2 + HTMX. 라우터:
 > **`status=applied` 전형 단계 정렬** (`routers/jobs.py`의 `APP_STATUS_ORDER`): 지원완료 필터는 `sort`(최신순/합격률순) 이전에
 > 전형 단계 우선순위를 1차 정렬 기준으로 적용한다 — 최종합격 > 임원면접 > 직무면접 > 코딩테스트 > 결과대기(`None`) >
 > 서류합격 > 최종탈락 > 서류탈락. 개별 전형 단계 필터(`doc_passed` 등)는 모든 공고가 동일 단계라 이 정렬이 적용되지 않음.
+> 그 외 목록(기본/맞춤/평가 상태 등)에서는 `REJECTED_STATUSES`(서류탈락/최종탈락) 공고를 정렬 후 맨 뒤로 보낸다. 합격률순이면 이미 떨어진 공고가 상단을 차지하기 때문.
 > `base.html`의 동일한 순서(`APP_STATUS_ORDER` JS 상수)로 드롭다운 변경 시 새로고침 없이 카드 위치를 즉시 재배치
 > (`applyCardStatus()` 마지막에 `reorderAppliedCard()` 호출, `?status=applied` 뷰에서만 동작).
 
@@ -292,10 +298,14 @@ FastAPI + Jinja2 + HTMX. 라우터:
 
 `company_type` 파라미터: 대기업/중견기업/중소기업/공기업/외국계/스타트업/금융업 중 하나, 또는 미분류만 보는 `none`. `tier`와 동일하게 Python 리스트 단계에서 필터링.
 
+`tier` 파라미터 (`filters/criteria.py`의 `target_tier()`): `1`(캐피탈/카드/저축은행/보험/증권 직고용) / `2`(금융지주 IT 자회사, 대기업 IT) / `3`(인터넷은행 도메인 포지션) / `relay`(펌뱅킹/PG/VAN/연계솔루션. 통신 계층 구현 경험을 깊게 묻는 경우가 많아 분리) / `hold`(보류 유형 + 지원자가 몰리는 1군 프로덕트사) / `none`(타겟 외) / `target`(1/2/3/relay 전체). 판정 순서는 hold 고정 목록 -> 인터넷은행 -> 1군 프로덕트사 -> relay -> 1 -> 2 (카카오뱅크가 "카카오"에 먼저 걸리지 않게).
+
+`max_years` 파라미터: `extract_min_years()`로 본문/경력 필드의 "N년 이상", "N~M년" 중 최솟값을 뽑아 N년 이하만 남긴다. 하한 미표기 공고는 남긴다(경력 무관 공고 유실 방지). `employment` 파라미터(`regular`/`contract`/`freelance`): `employment_kind()`가 `employment_type` -> 제목 -> 본문 순으로 판정하며, 본문은 "근무형태/고용형태" 표기 바로 뒤 값만 본다(업무 설명 속 "외주 관리" 같은 오탐 방지). 필터 바의 "맞춤" 링크는 `?tier=target&max_years=3`.
+
 ### 설정 (`config.py`)
 
 `pydantic-settings` 기반, `.env` 파일 로드. `get_settings()` 로 싱글톤 접근.
-주요 설정: `DESIRED_ROLES`, `DESIRED_REGIONS`, `DESIRED_POSITIONS`, `BLACKLIST_COMPANIES`, `REQUIRED_KEYWORDS`, `CRAWL_CONCURRENCY`, `RESUME_PATH`(파일 또는 `claude_resume/공통` 폴더 — 폴더면 이력서/경력기술서 종류별 최신 버전 자동 선택), `RESUME_REPO_PATH`(지원예정 내보내기 대상, 미설정 시 `RESUME_PATH`에서 유도 — 폴더면 한 단계, 파일이면 두 단계 위)
+주요 설정: `DESIRED_ROLES`, `ANY_EXPERIENCE_ROLES`(경력 조건 없이 추가 검색할 키워드), `DESIRED_REGIONS`, `DESIRED_POSITIONS`, `BLACKLIST_COMPANIES`, `REQUIRED_KEYWORDS`, `CRAWL_CONCURRENCY`, `RESUME_PATH`(파일 또는 `claude_resume/공통` 폴더 — 폴더면 이력서/경력기술서 종류별 최신 버전 자동 선택), `RESUME_REPO_PATH`(지원예정 내보내기 대상, 미설정 시 `RESUME_PATH`에서 유도 — 폴더면 한 단계, 파일이면 두 단계 위)
 
 ## 새 사이트 추가 패턴
 

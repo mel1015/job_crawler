@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     desired_salary_min: int = 0
     desired_experience_min: int = 0
     desired_experience_max: int = 99
+    # 경력 조건 없이 한 번 더 검색할 키워드. SI/SM 프리랜서 공고는 경력을 "무관"이나
+    # 초급/중급/고급 등급으로만 적어 경력 2 ~ 4년 검색에서 빠지기 때문
+    any_experience_roles: str = ""
 
     # 필터링 세분화
     desired_positions: str = ""   # 직군 화이트리스트 (빈값=전체 허용)
@@ -68,6 +71,10 @@ class Settings(BaseSettings):
     @property
     def roles_list(self) -> list[str]:
         return [s.strip() for s in self.desired_roles.split(",") if s.strip()]
+
+    @property
+    def any_experience_roles_list(self) -> list[str]:
+        return [s.strip() for s in self.any_experience_roles.split(",") if s.strip()]
 
     @property
     def regions_list(self) -> list[str]:
