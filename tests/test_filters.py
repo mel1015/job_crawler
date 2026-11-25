@@ -74,6 +74,38 @@ def test_pass_filters_blacklist_keyword(empty_settings):
     assert pass_filters(_summary("보험설계사 모집")) is False
 
 
+@pytest.mark.parametrize(
+    "title",
+    [
+        "데이터센터 사업개발 매니저 (경력)",
+        "건기식/일반식품 상품개발(BM) 경력자",
+        "건기식 상품 개발 담당",
+        "[피알티엔] 메뉴개발 담당 (프로티너 소스·신메뉴)",
+        "Business Development Manager",
+        "신사업개발자(캐피탈사)",
+        "[아이지넷] B2B Business Developer (B2B 사업개발 담당자)",
+    ],
+)
+def test_pass_filters_non_dev_development_titles(empty_settings, title):
+    # "개발"이 들어가 DEV_KEYWORDS를 통과하지만 SW 개발이 아닌 직군
+    assert pass_filters(_summary(title)) is False
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "생성형 AI 빅데이터 마케팅 플랫폼 백엔드(Java) 개발자 채용",
+        "AI구축 사업 개발자 경력직 채용",
+        "KT알파쇼핑 영업지원시스템(백오피스) 기획/설계/개발 채용",
+        # 팀명/부문 나열에 사업개발이 들어갔지만 SW 직무인 공고
+        "[HDC랩스/본사] 사업개발팀 AI CCTV VMS 개발·운영 엔지니어",
+        "26년 10월 한국콜마 경력채용(IT, 사업개발, 글로벌영업, 생산)",
+    ],
+)
+def test_pass_filters_keeps_dev_titles_with_business_words(empty_settings, title):
+    assert pass_filters(_summary(title)) is True
+
+
 def test_pass_filters_blacklist_company(empty_settings, monkeypatch):
     empty_settings.blacklist_companies_list = ["나쁜회사"]
     assert pass_filters(_summary("백엔드 개발자", company="나쁜회사 주식회사")) is False

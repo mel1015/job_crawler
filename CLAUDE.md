@@ -125,7 +125,8 @@ pytest tests/test_resume_loader.py  # 단일 파일
 ### 필터링 (`filters/criteria.py`)
 
 `pass_filters()` 체인 (사이트 무관):
-1. 제목에 `BLACKLIST_KEYWORDS` 포함 → 탈락
+1. 제목에 `BLACKLIST_KEYWORDS` 포함 → 탈락 (부분 문자열 비교라 추가 전 DB 제목과 대조해 개발 공고가 걸리지 않는지 확인한다. 예: `영업`/`마케팅`/`기획`은 "영업지원시스템 개발", "마케팅 플랫폼 백엔드"를 걸러내서 넣지 않음)
+   - `NON_SW_DEV_PHRASES`(`사업개발`/`상품개발`/`메뉴개발` 등, "개발"이 들어가 DEV_KEYWORDS를 통과하는 비SW 직군)는 구절을 지운 뒤에도 `개발`/`engineer`/`엔지니어`/`IT` 신호가 남으면 통과시킨다. 팀명("사업개발팀 ... 개발·운영 엔지니어")이나 부문 나열("경력채용(IT, 사업개발, ...)")에 들어간 SW 공고를 살리기 위함. 2026-11 DB 전체 대조: 구절 포함 254건 중 237건 탈락(전부 비IT 확인), 17건 통과(IT 4건 + 비IT 13건은 채점에서 부적합 처리)
 2. 기업명이 `.env BLACKLIST_COMPANIES` 에 포함 → 탈락
 3. catch 제외: 제목에 `REQUIRED_KEYWORDS`(없으면 `DEV_KEYWORDS`) 미포함 → 탈락
 4. `DESIRED_POSITIONS` 설정 시: `extract_position(title)` 로 직군 분류 → 불일치 탈락
