@@ -278,6 +278,21 @@ FastAPI + Jinja2 + HTMX. 라우터:
 > 의도적으로 분리). 삭제는 `_application_status.html`과 같은 "wrapper id를 outerHTML로 통째로 교체"
 > 패턴을 리스트 전체(`#events-{{ job.id }}`)로 확장한 것 — 새 패턴이 아님.
 
+> **지원 이력 표시** (`filters/apply_history.py`, `routers/jobs.py`의 `_apply_history`): 목록 카드에 "예전에 지원한
+> 같은/비슷한 업무"의 지원일, 전형 결과, 재지원 판단을 칩으로 보여준다. 사람인/잡코리아 재게시나 사이트별로
+> 포지션명을 다르게 올린 공고 때문에 회사명만으로는 판정하지 않는다(회사명만 맞추면 열린 공고 102건이 걸리지만
+> 같은 업무는 13건). 같은 회사(`normalize_company`, 잡코리아의 "신세계I&C신세계그룹" 같은 그룹명 접미어는 떼고 부분 문자열
+> 매칭은 안 함: 카카오 vs 카카오페이) 안에서 제목은 단어 집합으로(괄호 안 팀명/계열사명 유지),
+> JD는 6글자 조각의 가중 포함도로 비교한다. 회사 공통 문구는 "그 회사의 서로 다른 포지션명 몇 개에 나오는지"의
+> 역수로 가중치를 낮추고, 사이트 템플릿 줄은 15개 이상 회사에 나오는 줄로 판정해 지운다(공고 수로 세면 재게시가
+> 많은 회사의 JD 본문 가중치가 낮아져 오판). 판정: 같은 업무 / 같은 업무 추정(JD 비교 불가 또는 수동 등록 요약본) /
+> 비슷한 업무(포지션명 포함 관계, 또는 포지션명이 달라도 JD가 90% 이상 포함) / 포지션명만 같음(같은 제목, 다른 팀 JD).
+> 임계값 근거는 모듈 docstring(지원 공고 70건 x 같은 회사 공고 736쌍 측정). 지원일은 전형 타임라인의 "지원" 이벤트
+> (수동 등록 공고는 등록일), 최종탈락 칩에는 마지막 이벤트 이름("1차면접결과")을 붙여 어느 전형에서 떨어졌는지 보여준다.
+> 타임라인이 비어 있으면 "지원일 미기록"으로 나온다. 재지원 판단의 `REAPPLY_COOLDOWN_DAYS`
+> (180일)는 회사별 확인된 규정이 아니라 일반적인 재지원 제한 하한이다. 사이트 템플릿 계산(약 0.5초)은 공고 수/최대 id
+> 기준으로 캐시하고, 이력은 현재 페이지 공고(50건)만 계산한다.
+
 대시보드 필터 (`status` 파라미터):
 - `scored` / `unscored`: 평가 완료/미평가
 - `planned`: `application_status='planned'` 공고 (지원예정). `is_applied=False`라 기본 목록(`is_closed=False`)에서 걸러냄
@@ -339,6 +354,7 @@ class MySiteCrawler(BaseCrawler):
 | 관심없음 선택해도 기본 목록에서 안 사라짐 | `applyCardStatus()`가 `status≠ignored`일 때 `style.display='none'` 처리 (DB 저장은 hx-post 병행) |
 | 상세에서 마감/상태 변경 후 뒤로가기 시 목록 반영 안 됨 | 브라우저 bfcache가 옛 목록 복원 → `base.html` `pageshow` 핸들러가 `e.persisted`/nav type=`back_forward`면 `location.reload()` |
 | remember `search 'SI': RetryError` 등 뒤쪽 키워드 검색만 실패 | 검색 API(`POST /job_postings/search`)에 Cloudflare rate limit(약 1분 30회, 초과 시 `429` + `Retry-After` 최대 60초)이 걸림(2026-11 측정, 상세 API는 미해당). `ANY_EXPERIENCE_ROLES` 키워드 4개가 추가된 뒤 검색 요청이 한도를 넘어 마지막 4개 키워드가 매번 실패했음. `crawlers/remember.py`의 `_request`가 429면 `Retry-After`(상한 90초)만큼 기다렸다가 최대 2번 재요청하고, tenacity 백오프 재시도는 429를 제외함. 키워드를 더 늘리면 크롤당 대기가 그만큼 늘어난다 |
+| saramin 공고 본문이 "핵심 정보"(경력/학력/급여)만 있고 JD가 없음 (채점이 "평가불가"나 제목 기준) | 상세 페이지의 "핵심 정보" 요약 블록(`.jv_summary`)에도 "자격요건 상세보기" 버튼 문구가 있어, 키워드가 든 첫 `.jv_cont`를 고르던 `_extract_body`가 요약만 저장하고 JD(`.jv_detail`)를 버렸음(2026-11 열린 사람인 공고 1,172건 중 598건). 요약 + `.jv_detail`을 함께 저장하도록 수정. 마감 공고는 "마감 안내" 블록(`.jv_detail.expired`)이 JD 블록 앞에 와서 건너뛴다. JD가 이미지뿐이면 본문 이미지(`pds.saramin.co.kr` 또는 외부 이미지 프록시 `www.saraminimage.co.kr?url=`, 템플릿 장식 `static.saraminimage.co.kr`과 워터마크는 제외)를 `image_urls`에 담고 본문에 `IMAGE_ONLY_PLACEHOLDER`를 붙여 이미지 공고로 채점(`_is_image_only`는 자리표시 문구 포함 여부로 판정). 수정 전에 수집된 공고는 재조회해야 JD가 채워진다 |
 | remember에서 특정 회사(토스 등) 공고가 안 잡힘 | ① 회사가 영문 제목(`Server Developer` 등) 사용 시 `DESIRED_ROLES`에 대응 영문 키워드 누락 여부 확인 ② `crawlers/remember.py`가 `min_experience`/`max_experience`를 API에 보내면 경력 미설정(`None`) 공고가 통째로 결과에서 빠지는 remember API 버그성 동작 있음 — remember는 경력 필터 전달 안 함(의도적) |
 | 루트에 세션 임시 파일/폴더가 git status에 계속 남음 | `scheduler.py`의 자동분석 cleanup(`_run_analysis` finally 블록)은 `_*`/`*_tmp.py`/`tmp_*` 패턴만 정리하고 그 외 이름은 안 지워짐 — 세션에서 임시 파일 만들 때 반드시 이 패턴 중 하나로 명명 (또는 이미지 다운로드처럼 프로젝트 밖 시스템 `/tmp/` 사용) |
 | 수동 등록(`/jobs/new`) 공고 본문이 상세 페이지에서 리스트/헤더 없이 뭉개져 보임 | `body_formatter.py`의 `format_body_html()`은 줄 단위 정규식 매칭이라 형식이 엄격함: 섹션 헤더는 `[제목]`이 **그 줄에 단독**으로 있어야 함(`[필수 사항] 이런 분과...`처럼 뒤에 텍스트가 붙으면 매칭 실패해 일반 문단으로 렌더링), 리스트 항목은 `•·-*▪▸►◦‧` 또는 `숫자.`/`숫자)`로 시작해야 함(`. 은행:`처럼 점만 있으면 리스트가 끊기고 `<ul>`이 닫힘). 수동 공고 body_text 작성 시 헤더는 별도 줄, 하위 항목도 반드시 인식되는 불릿 문자(`-` 등)로 통일 |

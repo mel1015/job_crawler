@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from .base import BaseCrawler, JobDetail, JobSummary, SearchCriteria
+from .base import IMAGE_ONLY_PLACEHOLDER, BaseCrawler, JobDetail, JobSummary, SearchCriteria
 
 SEARCH_BASE = "https://www.saramin.co.kr/zf_user/search/recruit"
 REGION_CODES = {
@@ -30,6 +30,29 @@ _SELECTORS = {
     "conditions": "div.job_condition span",
     "date": "span.job_day",
 }
+
+
+# 상세 JD 텍스트가 이보다 짧으면("상세요강" 제목만 있는 경우) 이미지 공고로 본다
+DETAIL_MIN_CHARS = 50
+# 공고 본문 이미지는 pds.saramin.co.kr이나 외부 이미지 프록시
+# (www.saraminimage.co.kr?url=...)에 있고,
+# 템플릿 장식은 static.saraminimage.co.kr, 워터마크는 파일명에 watermark가 들어간다 (2026-11 확인)
+_DECORATIVE_IMG = re.compile(r"static\.saraminimage\.co\.kr|watermark", re.I)
+
+
+def _detail_image_urls(detail) -> list[str]:
+    urls: list[str] = []
+    for img in detail.select("img[src]"):
+        src = img["src"].strip()
+        if not src or src.startswith("data:") or _DECORATIVE_IMG.search(src):
+            continue
+        if src.startswith("//"):
+            src = "https:" + src
+        elif src.startswith("/"):
+            src = "https://www.saramin.co.kr" + src
+        if src not in urls:
+            urls.append(src)
+    return urls
 
 
 class SaraminCrawler(BaseCrawler):
@@ -149,9 +172,11 @@ class SaraminCrawler(BaseCrawler):
 
         soup = BeautifulSoup(html, "html.parser")
         meta = self._meta.get(summary.external_id, {})
+        body_text, image_urls = self._extract_body(soup)
         return JobDetail(
             summary=summary,
-            body_text=self._extract_body(soup)[:20000],
+            body_text=body_text[:20000],
+            image_urls=image_urls,
             body_raw=html[:50000],
             experience=meta.get("experience"),
             employment_type=meta.get("employment_type"),
@@ -203,15 +228,40 @@ class SaraminCrawler(BaseCrawler):
                             pass
         return None
 
-    def _extract_body(self, soup: BeautifulSoup) -> str:
+    def _extract_body(self, soup: BeautifulSoup) -> tuple[str, list[str]]:
+        """(본문, 이미지 URL)을 돌려준다.
+
+        상세 JD는 `.jv_cont.jv_detail`에 있다. 그 앞의 "핵심 정보" 요약(`.jv_summary`)에도
+        "자격요건 상세보기", "우대사항 상세보기" 버튼 문구가 있어서,
+        키워드가 든 첫 `.jv_cont`를 고르던 예전 방식은 요약만 저장하고 JD를 버렸다
+        (2026-11 열린 사람인 공고 1,172건 중 598건).
+        요약(경력/학력/근무형태)은 채점에 쓰이므로 JD 앞에 함께 저장한다.
+        """
+        summary = soup.select_one(".jv_cont.jv_summary")
+        # 마감 공고는 "마감 안내" 블록(.jv_detail.expired)이 JD 블록 앞에 온다
+        detail = soup.select_one(".jv_cont.jv_detail:not(.expired)")
+        if detail:
+            for tag in detail.select("script, style"):
+                tag.decompose()
+            parts = [summary.get_text("\n", strip=True)] if summary else []
+            detail_text = detail.get_text("\n", strip=True)
+            if len(detail_text.replace("상세요강", "").strip()) >= DETAIL_MIN_CHARS:
+                parts.append(detail_text)
+                return "\n".join(parts), []
+            # 본문이 이미지로만 된 공고: catch와 같은 자리표시 문구를 넣어
+            # 이미지 공고로 채점되게 한다
+            images = _detail_image_urls(detail)
+            if images:
+                parts.append(IMAGE_ONLY_PLACEHOLDER)
+                return "\n".join(parts), images
         content_keywords = ("주요업무", "자격요건", "모집분야", "담당업무", "지원자격", "우대사항")
         for jv in soup.select(".jv_cont"):
             text = jv.get_text(" ", strip=True)
             if any(k in text for k in content_keywords):
-                return jv.get_text("\n", strip=True)
+                return jv.get_text("\n", strip=True), []
         wrap = soup.select_one(".wrap_jv_cont")
         if wrap:
             for tag in wrap.select("script, style, .jv_header, .jv_util, .btn_wrap"):
                 tag.decompose()
-            return wrap.get_text("\n", strip=True)
-        return soup.get_text("\n", strip=True)
+            return wrap.get_text("\n", strip=True), []
+        return soup.get_text("\n", strip=True), []

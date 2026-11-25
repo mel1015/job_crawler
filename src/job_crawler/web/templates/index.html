@@ -189,6 +189,20 @@
           {% for ev in j.events %}<span class="chip event">{{ ev.event_date.strftime('%m/%d') }} {{ ev.label }}</span>{% endfor %}
         </div>
         {% endif %}
+        {% set hist = history.get(j.id) %}
+        {% if hist %}
+        <div class="tags apply-history">
+          {% if hist.advice %}<span class="chip {{ hist.advice.level }}">{{ hist.advice.text }}</span>{% endif %}
+          {% for p in hist.priors[:3] %}
+          <a class="chip history match-{{ p.match }}" href="/jobs/{{ p.job_id }}"
+             title="{{ p.match_label }}: {{ p.site | upper }} {{ p.title }}"
+             onclick="event.stopPropagation();">
+            {{ p.match_label }} | {{ p.applied_on.strftime('%y/%m/%d') ~ ' 지원' if p.applied_on else '지원일 미기록' }}, {{ p.status_label }}{% if p.result_on and p.status %} ({% if p.status == 'final_rejected' and p.result_label %}{{ p.result_label }} {% endif %}{{ p.result_on.strftime('%m/%d') }}){% endif %}
+          </a>
+          {% endfor %}
+          {% if hist.priors | length > 3 %}<span class="chip">외 {{ hist.priors | length - 3 }}건</span>{% endif %}
+        </div>
+        {% endif %}
       </div>
       <div class="score-area">
         {% with job=j %}{% include '_closed_btn.html' %}{% endwith %}

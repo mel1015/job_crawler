@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -10,13 +10,16 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import defer, joinedload, selectinload
 
-from ...db.models import ApplicationEvent, Job, ScoreResult
+from ...db.models import ApplicationEvent, Job
 from ...db.session import session_scope
+from ...filters import apply_history as ah
 from ...filters.criteria import employment_kind, extract_min_years, target_tier
 from ...resume.export import export_job
 from ..templating import templates
 
 router = APIRouter()
+
+_KST = timezone(timedelta(hours=9))
 
 VALID_TIERS = {"1", "2", "3", "relay", "hold", "none", "target"}
 # "target": 지원 우선순위 등급 전체(1/2/3/연계). "맞춤" 프리셋이 쓴다
@@ -55,6 +58,45 @@ APP_STATUS_ORDER = {
     "final_rejected": 6,
     "doc_rejected": 7,
 }
+
+
+# 사이트 템플릿 줄은 DB 전체 본문에서 계산해야 해서(약 0.5초) 공고 수/최대 id가 바뀔 때만 다시 계산
+_boilerplate_cache: dict[tuple[int, int], set[str]] = {}
+
+
+def _site_boilerplate(rows) -> set[str]:
+    key = (len(rows), max((r.id for r in rows), default=0))
+    if key not in _boilerplate_cache:
+        _boilerplate_cache.clear()
+        _boilerplate_cache[key] = ah.site_boilerplate((r.company, r.body_text) for r in rows)
+    return _boilerplate_cache[key]
+
+
+def _apply_history(session, page_jobs: list[Job]) -> dict[int, dict]:
+    """페이지 공고별로 예전에 지원한 같은/비슷한 업무 이력과 재지원 판단을 만든다."""
+    applied = list(
+        session.execute(
+            select(Job)
+            .options(selectinload(Job.events), defer(Job.body_raw))
+            .where(Job.is_applied == True)  # noqa: E712
+        ).scalars()
+    )
+    applied_cos = {ah.normalize_company(a.company) for a in applied}
+    targets = [j for j in page_jobs if ah.normalize_company(j.company) in applied_cos]
+    if not targets:
+        return {}
+    rows = session.execute(select(Job.id, Job.site, Job.company, Job.title, Job.body_text)).all()
+    boilerplate = _site_boilerplate(rows)
+    # 회사 공통 문구 가중치는 그 회사의 전체 공고(마감 포함)에서 계산한다
+    pool = [r for r in rows if ah.normalize_company(r.company) in applied_cos]
+    index = ah.JobIndex(pool, boilerplate)
+    today = datetime.now(tz=_KST).date()
+    history: dict[int, dict] = {}
+    for j in targets:
+        priors = ah.find_prior_applications(j, applied, index)
+        if priors:
+            history[j.id] = {"priors": priors, "advice": ah.reapply_advice(priors, today)}
+    return history
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -102,7 +144,7 @@ def index(
         )
         # first_seen_at/last_seen_at은 SQLite func.now()로 naive UTC 저장 →
         # 비교 기준 now도 naive UTC로 맞춰 9시간 오차 제거 ("신규" 배지·통계 정확)
-        now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
         week_ago = now - timedelta(days=7)
         day_ago = now - timedelta(days=1)
         stats = {
@@ -232,6 +274,7 @@ def index(
         page = min(page, total_pages)
         start = (page - 1) * PAGE_SIZE
         jobs = jobs[start : start + PAGE_SIZE]
+        history = _apply_history(session, jobs)
 
         sites = sorted(by_site.keys())
 
@@ -258,6 +301,7 @@ def index(
             "index.html",
             {
                 "jobs": jobs,
+                "history": history,
                 "sites": sites,
                 "company_types": COMPANY_TYPES,
                 "stats": stats,
