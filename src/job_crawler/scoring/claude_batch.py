@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 def _is_image_only(body_text: str | None) -> bool:
-    return (body_text or "").strip() == IMAGE_ONLY_PLACEHOLDER
+    # catch는 본문 전체가 자리표시 문구, 사람인은 "핵심 정보" 요약 뒤에 자리표시 문구가 붙는다
+    return IMAGE_ONLY_PLACEHOLDER in (body_text or "")
 
 
 def count_unscored_jobs(days: int = 3) -> int:
