@@ -64,7 +64,7 @@ pytest tests/test_resume_loader.py  # 단일 파일
 
 `/crawl`, `/analyze`는 frontmatter에 `model: claude-sonnet-5-5`, `effort: xhigh`가 고정되어 세션 모델과 무관하게 해당 설정으로 실행됨 (frontmatter는 정적 YAML이라 env 참조 불가). `/analyze` 병렬 배치의 서브에이전트도 `model: "sonnet"`으로 호출. `jc-scheduler`의 자동분석(`_run_analysis`)은 `config.get_analysis_model_settings()`를 통해 `.env`의 `ANALYSIS_MODEL`/`ANALYSIS_EFFORT`/`ANALYSIS_TIMEOUT_SEC`(기본 claude-sonnet-5-5 / xhigh / 1800초)로 설정. 미평가 재검사 창은 `scheduler.py`의 `_ANALYSIS_LOOKBACK_DAYS`(기본 3일) — 특정 회차의 `claude -p`가 무진행으로 실패해도 이후 회차에서 최대 3일간 재시도 대상에 남도록 함.
 
-- `/crawl [limit=300] [--analyze]`: `jc-crawl --limit LIMIT` 실행 → 최근 30분 내 `CrawlRun` 이력을 사이트별로 조회해 fetched/new_jobs/status 요약 출력. `--analyze` 시 완료 후 `/analyze`(days=1)를 이어서 실행
+- `/crawl [limit=300] [--analyze]`: 시작 시각(UTC) 기록 후 `jc-crawl --limit LIMIT`을 백그라운드 실행(전체 크롤 약 13분이라 Bash 포그라운드 10분 제한 초과) → 시작 시각 이후 `crawl_runs`를 `sqlite3` 한 줄 쿼리로 조회해 fetched/new_jobs/status/오류 건수 요약 출력. `crawl_runs.started_at`은 UTC(`CURRENT_TIMESTAMP`)라 로컬 시각으로 비교하면 빈 결과가 나온다. 일부 키워드 실패는 `status=ok`로 남으므로 오류 건수를 따로 본다. `--analyze` 시 완료 후 `/analyze 1`(limit 미지정 = 미평가 전체)을 이어서 실행하고, days=7 잔여 미평가 건수를 추가 보고
 - `/analyze [days=7] [limit=전체건수]`: `count_unscored_jobs()` 로 미평가 건수 확인 → 0건이면 종료. limit 미지정 시 이 건수(N)를 그대로 사용해 전체를 조회(20건 초과는 병렬 배치가 규모를 흡수하므로 임의 상한 없음) → `build_analysis_prompt()` 로 출력된 절차(이력서 프로파일 비교·채점 규칙 적용·이미지 공고 시각 분석)를 따라 평가 → `save_claude_scores()` 저장 → 잔여 미평가 건수 재조회 후 보고
   - 미평가 건수(N) 20건 초과 시 병렬 배치 처리: `num_batches = min(4, ceil(N/15))` 로 분할해 `Agent`(general-purpose) 를 한 메시지에서 동시 호출, 배치별 결과(JSON 배열만 반환·DB 미저장)를 메인이 취합해 `save_claude_scores()` 1회 호출로 저장(SQLite 동시쓰기 락 방지). 크롤링 1회 평균 신규 공고 32건(중앙값 20건) 기준 임계값
 - `/check-daemon`: `jc-scheduler`·`caffeinate` 프로세스 생존 확인(`pgrep`) → 최근 크롤링 결과(마지막 수집 시각·오늘 신규 건수·미평가 건수) DB 조회 → 스케줄(09:00/19:00 KST) 기준 미실행 의심 여부 판정 후 4줄 이내 보고. 죽어있으면 재기동 명령을 제시만 하고 직접 실행하지 않음
@@ -125,7 +125,8 @@ pytest tests/test_resume_loader.py  # 단일 파일
 ### 필터링 (`filters/criteria.py`)
 
 `pass_filters()` 체인 (사이트 무관):
-1. 제목에 `BLACKLIST_KEYWORDS` 포함 → 탈락
+1. 제목에 `BLACKLIST_KEYWORDS` 포함 → 탈락 (부분 문자열 비교라 추가 전 DB 제목과 대조해 개발 공고가 걸리지 않는지 확인한다. 예: `영업`/`마케팅`/`기획`은 "영업지원시스템 개발", "마케팅 플랫폼 백엔드"를 걸러내서 넣지 않음)
+   - `NON_SW_DEV_PHRASES`(`사업개발`/`상품개발`/`메뉴개발` 등, "개발"이 들어가 DEV_KEYWORDS를 통과하는 비SW 직군)는 구절을 지운 뒤에도 `개발`/`engineer`/`엔지니어`/`IT` 신호가 남으면 통과시킨다. 팀명("사업개발팀 ... 개발·운영 엔지니어")이나 부문 나열("경력채용(IT, 사업개발, ...)")에 들어간 SW 공고를 살리기 위함. 2026-11 DB 전체 대조: 구절 포함 254건 중 237건 탈락(전부 비IT 확인), 17건 통과(IT 4건 + 비IT 13건은 채점에서 부적합 처리)
 2. 기업명이 `.env BLACKLIST_COMPANIES` 에 포함 → 탈락
 3. catch 제외: 제목에 `REQUIRED_KEYWORDS`(없으면 `DEV_KEYWORDS`) 미포함 → 탈락
 4. `DESIRED_POSITIONS` 설정 시: `extract_position(title)` 로 직군 분류 → 불일치 탈락
@@ -337,6 +338,7 @@ class MySiteCrawler(BaseCrawler):
 | 드롭다운 바꿔도 카드 색 즉시 안 변함 | fragment 스왑은 드롭다운만 갱신 → `applyCardStatus()` JS로 `.job-card` 클래스 즉시 변경 |
 | 관심없음 선택해도 기본 목록에서 안 사라짐 | `applyCardStatus()`가 `status≠ignored`일 때 `style.display='none'` 처리 (DB 저장은 hx-post 병행) |
 | 상세에서 마감/상태 변경 후 뒤로가기 시 목록 반영 안 됨 | 브라우저 bfcache가 옛 목록 복원 → `base.html` `pageshow` 핸들러가 `e.persisted`/nav type=`back_forward`면 `location.reload()` |
+| remember `search 'SI': RetryError` 등 뒤쪽 키워드 검색만 실패 | 검색 API(`POST /job_postings/search`)에 Cloudflare rate limit(약 1분 30회, 초과 시 `429` + `Retry-After` 최대 60초)이 걸림(2026-11 측정, 상세 API는 미해당). `ANY_EXPERIENCE_ROLES` 키워드 4개가 추가된 뒤 검색 요청이 한도를 넘어 마지막 4개 키워드가 매번 실패했음. `crawlers/remember.py`의 `_request`가 429면 `Retry-After`(상한 90초)만큼 기다렸다가 최대 2번 재요청하고, tenacity 백오프 재시도는 429를 제외함. 키워드를 더 늘리면 크롤당 대기가 그만큼 늘어난다 |
 | remember에서 특정 회사(토스 등) 공고가 안 잡힘 | ① 회사가 영문 제목(`Server Developer` 등) 사용 시 `DESIRED_ROLES`에 대응 영문 키워드 누락 여부 확인 ② `crawlers/remember.py`가 `min_experience`/`max_experience`를 API에 보내면 경력 미설정(`None`) 공고가 통째로 결과에서 빠지는 remember API 버그성 동작 있음 — remember는 경력 필터 전달 안 함(의도적) |
 | 루트에 세션 임시 파일/폴더가 git status에 계속 남음 | `scheduler.py`의 자동분석 cleanup(`_run_analysis` finally 블록)은 `_*`/`*_tmp.py`/`tmp_*` 패턴만 정리하고 그 외 이름은 안 지워짐 — 세션에서 임시 파일 만들 때 반드시 이 패턴 중 하나로 명명 (또는 이미지 다운로드처럼 프로젝트 밖 시스템 `/tmp/` 사용) |
 | 수동 등록(`/jobs/new`) 공고 본문이 상세 페이지에서 리스트/헤더 없이 뭉개져 보임 | `body_formatter.py`의 `format_body_html()`은 줄 단위 정규식 매칭이라 형식이 엄격함: 섹션 헤더는 `[제목]`이 **그 줄에 단독**으로 있어야 함(`[필수 사항] 이런 분과...`처럼 뒤에 텍스트가 붙으면 매칭 실패해 일반 문단으로 렌더링), 리스트 항목은 `•·-*▪▸►◦‧` 또는 `숫자.`/`숫자)`로 시작해야 함(`. 은행:`처럼 점만 있으면 리스트가 끊기고 `<ul>`이 닫힘). 수동 공고 body_text 작성 시 헤더는 별도 줄, 하위 항목도 반드시 인식되는 불릿 문자(`-` 등)로 통일 |

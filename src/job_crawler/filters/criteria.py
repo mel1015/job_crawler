@@ -23,6 +23,26 @@ BLACKLIST_KEYWORDS = [
     "f/w 개발", "h/w 개발", "hw 개발", "fw 개발",
 ]
 
+# "개발"이 들어가 DEV_KEYWORDS를 통과하는 비SW 직군. remember `운영개발` 검색이 이런 공고를
+# 대량으로 가져옴. 영업/마케팅/기획/제품개발/"사업 개발"(띄어쓰기)은 실제 개발 공고까지
+# 걸러내서 넣지 않음 (2026-11 DB 대조).
+# BLACKLIST_KEYWORDS와 달리 구절을 지운 뒤에도 SW 직무 신호(_SW_SIGNAL)가 남으면 통과시킨다.
+# 팀명("사업개발팀 ... 개발·운영 엔지니어")이나 부문 나열("경력채용(IT, 사업개발, ...)")로
+# 들어간 SW 공고를 살리기 위해서다 (DB 전체 254건 중 이런 IT 공고 4건 확인)
+NON_SW_DEV_PHRASES = ["사업개발", "상품개발", "상품 개발", "메뉴개발", "메뉴 개발"]
+# "developer"는 넣지 않는다: "Business Developer"가 사업개발 직군 표기라서
+_SW_SIGNAL = re.compile(r"개발|engineer|엔지니어|\bit\b", re.I)
+
+
+def _is_non_sw_dev_title(title: str) -> bool:
+    if not any(p in title for p in NON_SW_DEV_PHRASES):
+        return False
+    rest = title
+    for p in NON_SW_DEV_PHRASES:
+        rest = rest.replace(p, " ")
+    return not _SW_SIGNAL.search(rest)
+
+
 DEV_KEYWORDS = [
     "개발", "developer", "engineer", "backend", "frontend",
     "풀스택", "서버", "웹개발", "앱개발", "소프트웨어",
@@ -182,6 +202,8 @@ def pass_filters(summary: JobSummary) -> bool:
     for bad in BLACKLIST_KEYWORDS:
         if bad.lower() in title:
             return False
+    if _is_non_sw_dev_title(title):
+        return False
 
     for bad_co in settings.blacklist_companies_list:
         if bad_co.lower() in company:
