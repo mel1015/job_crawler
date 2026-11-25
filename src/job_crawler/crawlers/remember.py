@@ -5,18 +5,47 @@ POST https://career-api.rememberapp.co.kr/job_postings/search
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
 import httpx
 from loguru import logger
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from .base import BaseCrawler, JobDetail, JobSummary, SearchCriteria
 
 SEARCH_URL = "https://career-api.rememberapp.co.kr/job_postings/search"
 DETAIL_URL = "https://career-api.rememberapp.co.kr/job_postings/{job_id}"
 JOB_URL = "https://career.rememberapp.co.kr/job/postings/{job_id}"
+
+# 검색 API는 Cloudflare rate limit(약 1분에 30회)에 걸리면 429 + Retry-After(최대 60초)를
+# 준다 (2026-11 측정). 지수 백오프(1초, 2초)로는 차단이 안 풀려 키워드 검색이 통째로
+# 실패하므로 Retry-After만큼 기다린 뒤 재요청한다.
+RATE_LIMIT_MAX_WAITS = 2
+RATE_LIMIT_MAX_WAIT_SEC = 90
+RATE_LIMIT_DEFAULT_WAIT_SEC = 60
+
+
+def _retry_after_sec(r: httpx.Response) -> float:
+    try:
+        sec = float(r.headers.get("retry-after", ""))
+    except ValueError:
+        sec = RATE_LIMIT_DEFAULT_WAIT_SEC
+    return min(max(sec, 1.0), RATE_LIMIT_MAX_WAIT_SEC)
+
+
+def _is_retryable(e: BaseException) -> bool:
+    # 429는 _request 안에서 Retry-After로 이미 기다렸으므로 백오프 재시도에서 제외
+    # (포함하면 대기 시간이 곱절로 늘어남)
+    return not (isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 429)
+
+
+_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    retry=retry_if_exception(_is_retryable),
+)
 
 
 class RememberCrawler(BaseCrawler):
@@ -39,19 +68,25 @@ class RememberCrawler(BaseCrawler):
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
-    async def _post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        await self._throttle()
-        r = await self._client.post(url, json=payload)
+    async def _request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+        for attempt in range(RATE_LIMIT_MAX_WAITS + 1):
+            await self._throttle()
+            r = await self._client.request(method, url, **kwargs)
+            if r.status_code != 429 or attempt == RATE_LIMIT_MAX_WAITS:
+                break
+            wait = _retry_after_sec(r)
+            logger.warning(f"remember rate limited (429), waiting {wait:.0f}s")
+            await asyncio.sleep(wait)
         r.raise_for_status()
         return r.json()
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
+    @_retry
+    async def _post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", url, json=payload)
+
+    @_retry
     async def _get_json(self, url: str) -> dict[str, Any]:
-        await self._throttle()
-        r = await self._client.get(url)
-        r.raise_for_status()
-        return r.json()
+        return await self._request("GET", url)
 
     async def search(self, criteria: SearchCriteria) -> list[JobSummary]:
         search_body: dict[str, Any] = {
